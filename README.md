@@ -10,6 +10,12 @@
 
 这是用于建立训练/评测闭环的基线，不是大规模预训练的通用机器人模型。
 
+模型架构、训练参数和 LIBERO-Spatial 历史成功率见 [VLA 模型历史](VLA_HISTORY.md)。
+
+双向融合版 V2 的 LIBERO-Spatial 模型框图（[可编辑 SVG](assets/model_architecture_v2.svg)）：
+
+![myVLA V2 模型架构](assets/model_architecture_v2.png)
+
 ## 1. 安装与诊断
 
 在项目目录执行；无需激活 conda，也不要复用其他项目环境：
@@ -268,3 +274,103 @@ HF_HUB_OFFLINE=1 uv run --locked myvla train \
 归一化必须一致；只允许融合模块缺少权重，重置优化器。`--resume` 仍要求架构一致。
 `configs/libero_spatial_fusion_control.yaml` 为相同步数、学习率和数据增强的无融合对照。
 实验结果使用独立目录，不覆盖已有的 `spatial_aug_v2`。
+
+## MetaWorld MT50：训练与评估
+
+支持官方 [`lerobot/metaworld_mt50`](https://huggingface.co/datasets/lerobot/metaworld_mt50)
+当前的 **LeRobot v3、parquet 内嵌 RGB** 格式。原始输入为单相机 480×480 RGB、
+4 维机器人状态（末端 xyz + 夹爪开度）、4 维连续动作（xyz + 夹爪）。
+训练时使用自然语言任务描述，不把物体/目标位置等 39 维特权状态输入模型。
+动作头和融合层可训练，CLIP 冻结；夹爪也使用连续 Smooth-L1 损失。
+这是监督式行为克隆，没有实现 MetaWorld 在线强化学习算法。
+
+### 安装独立环境
+
+MetaWorld 3.0 / MuJoCo 3.3 与 LIBERO 的 MuJoCo 2.3.7 不兼容，两个 extra 不能同时启用。
+使用单独虚拟环境，保留原 `.venv`：
+
+```bash
+export UV_PROJECT_ENVIRONMENT=.venv-mt50
+uv sync --locked --extra mt50
+```
+
+下面命令均在项目根目录、保留上述环境变量时执行。切回 LIBERO 时执行
+`unset UV_PROJECT_ENVIRONMENT`，并使用 `--extra sim`。
+
+### 下载、导入与训练
+
+完整原始数据当前为 492 个数据分片，合计约 **45.9GB**，另需导入后 HDF5 的空间。
+可以把原始数据下载到其他磁盘；本次代码验证只下载了第一个分片，没有下载全量数据。
+
+```bash
+uv run --locked --extra mt50 myvla download \
+  --suite metaworld_mt50 --directory /path/to/datasets --max-workers 2
+# 网络需要时可追加 --endpoint https://hf-mirror.com
+
+uv run --locked --extra mt50 myvla convert-metaworld \
+  --source /path/to/datasets/metaworld_mt50_raw \
+  --output data/metaworld_mt50
+
+uv run --locked --extra mt50 myvla inspect \
+  --dataset metaworld --data-dir data/metaworld_mt50
+
+HF_HUB_OFFLINE=1 uv run --locked --extra mt50 myvla train \
+  --config configs/metaworld_mt50.yaml
+```
+
+配置引用本机 `models/clip-vit-base-patch16`；其他机器需修改 `model.backbone`。
+默认训练 30,000 步、batch=4、累积=4、2 层交互。MT50 与 LIBERO 的状态、相机和输出
+维度不同，应使用本配置开始新训练，不能直接恢复 LIBERO 动作头。
+中断后按原配置恢复：
+
+```bash
+HF_HUB_OFFLINE=1 uv run --locked --extra mt50 myvla train \
+  --resume runs/metaworld_mt50_v1/latest.pt
+```
+
+导入按 task_id 保留 50 个任务身份，不依赖 parquet 分片边界划分演示。
+每个任务需要至少两条完整轨迹；默认全量导入核对 2,500 条轨迹、204,806 帧及全部 50 个任务。
+图像使用 bicubic 缩至 224×224，不再翻转；数据中的 RGB 已经过相机方向修正。
+专家 xyz 动作可能超过 [-1,1]，导入时裁剪到实际控制范围，并在 conversion.json 记录次数。
+训练按任务将整条演示划分为训练/验证集，统计量只从训练轨迹计算。
+
+如果只想开发调试，可显式使用 `--tasks 0 1` 或 `--max-episodes 2` 导入子集；
+同一轨迹跨分片时会继续读取直到完整。输出目录必须不存在，成功前只写临时目录。
+子集会标记 `full_mt50=false`，不能当作完整 MT50 训练。已有 HDF5 输出不会被覆盖。
+暂不支持旧版 LeRobot v2、视频存储或第三方 npz/pkl 数据，不能只改文件后缀导入。
+
+### 闭环评估
+
+```bash
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run --locked --extra mt50 myvla eval-metaworld \
+  --checkpoint runs/metaworld_mt50_v1/best.pt \
+  --output runs/eval_metaworld_mt50 \
+  --episodes 50 --execute-steps 1
+```
+
+默认全部 50 任务 × 50 回合，单回合最多 500 步。
+按任意一步 `info["success"]` 为真计成功，不用 reward 代替成功率。
+`--tasks 0 1` 可评估部分任务，`--episodes 2 --horizon 50` 可快速检查，
+`--videos` 保存 RGB MP4；每回合重置动作队列。
+
+提供两种明确记录的评估协议：
+
+- `--protocol lerobot`（默认）：匹配 LeRobot MT50 RGB wrapper 的相机和随机位置设置；
+  MT1(seed=42) 初始化，每回合使用独立、可复现的环境 seed。
+- `--protocol benchmark`：MetaWorld MT50(seed) 提供的每任务 50 个 goal，按固定随机排列
+  逐个评估；回合数不得超过 50。输出记录 goal index 和 goal 数据 SHA256。
+
+两种协议都使用 corner2、相机位置 [0.75, 0.075, 0.7]、480×480 渲染及双轴翻转，
+与导入数据保持 RGB 方向一致，后续 resize/归一化与训练共享。
+MetaWorld 3.0 的 reset(seed=...) 会忽略 seed，因此额外调用 env.seed()。
+`execute_steps=1` 表示预测动作块后只执行第一步再观察，可修改为不超过 chunk_size 的值。
+
+输出 `episodes.jsonl` 和 `results.json`，包含逐任务成功率、回合种子、评估协议、
+相机参数、模型配置、训练任务覆盖数与依赖版本；拒绝覆盖已有评估结果。
+中断时保留已完成任务的摘要，并标记 `completed=false`。
+不同协议、训练目标分布和执行动作长度的分数不能直接比较；本视觉模仿学习设置
+也不等同于原始使用状态/任务 one-hot 的 MT50 强化学习评测。
+
+新增实现：`metaworld_data.py`、`metaworld_evaluate.py`、`metaworld_tasks.json`；
+核心训练器复用原有 AMP、梯度累积、日志、best/latest checkpoint 和断点恢复。
+任务 ID 映射依据 LeRobot Apache-2.0 配置，自然语言指令按官方 MT50 数据元信息核对。

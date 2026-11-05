@@ -102,12 +102,18 @@ class VisionLanguageFusion(nn.Module):
         self.visual_attention = nn.MultiheadAttention(d, heads, dropout, batch_first=True)
         self.text_attention = nn.MultiheadAttention(d, heads, dropout, batch_first=True)
         self.visual_ffn = nn.Sequential(
-            nn.LayerNorm(d), nn.Linear(d, 4 * d), nn.GELU(),
-            nn.Dropout(dropout), nn.Linear(4 * d, d),
+            nn.LayerNorm(d),
+            nn.Linear(d, 4 * d),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(4 * d, d),
         )
         self.text_ffn = nn.Sequential(
-            nn.LayerNorm(d), nn.Linear(d, 4 * d), nn.GELU(),
-            nn.Dropout(dropout), nn.Linear(4 * d, d),
+            nn.LayerNorm(d),
+            nn.Linear(d, 4 * d),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(4 * d, d),
         )
         self.gates = nn.Parameter(torch.zeros(4))
 
@@ -129,8 +135,8 @@ class ActionHead(nn.Module):
         d = config.hidden_dim
         self.vision_proj = nn.Sequential(nn.LayerNorm(vision_dim), nn.Linear(vision_dim, d))
         self.text_proj = nn.Linear(text_dim, d)
-        self.state_proj = nn.Sequential(nn.Linear(8, d), nn.GELU(), nn.Linear(d, d))
-        self.camera_embedding = nn.Parameter(torch.randn(1, 2, 1, d) * 0.02)
+        self.state_proj = nn.Sequential(nn.Linear(config.state_dim, d), nn.GELU(), nn.Linear(d, d))
+        self.camera_embedding = nn.Parameter(torch.randn(1, config.cameras, 1, d) * 0.02)
         self.modality_embedding = nn.Parameter(torch.randn(1, 2, d) * 0.02)
         self.action_queries = nn.Parameter(torch.randn(1, config.chunk_size, d) * 0.02)
         layer = nn.TransformerDecoderLayer(
@@ -143,11 +149,13 @@ class ActionHead(nn.Module):
             activation="gelu",
         )
         self.decoder = nn.TransformerDecoder(layer, config.layers, norm=nn.LayerNorm(d))
-        self.output = nn.Linear(d, 7)
-        self.fusion = nn.ModuleList([
-            VisionLanguageFusion(d, config.heads, config.dropout)
-            for _ in range(config.fusion_layers)
-        ])
+        self.output = nn.Linear(d, config.action_dim)
+        self.fusion = nn.ModuleList(
+            [
+                VisionLanguageFusion(d, config.heads, config.dropout)
+                for _ in range(config.fusion_layers)
+            ]
+        )
 
     def forward(self, vision, text, state, tokens=None, padding=None):
         visual = (self.vision_proj(vision) + self.camera_embedding).flatten(1, 2)
@@ -184,6 +192,11 @@ def action_loss(predictions, targets, mask):
     predictions, targets = predictions.float(), targets.float()
     mask = mask.float()
     count = mask.sum().clamp_min(1)
+    if predictions.shape[-1] == 4:
+        # MetaWorld gripper is a continuous control, just like xyz.
+        loss = F.smooth_l1_loss(predictions, targets, reduction="none").mean(-1)
+        loss = (loss * mask).sum() / count
+        return loss, {"continuous": loss.detach()}
     motion = F.smooth_l1_loss(predictions[..., :6], targets[..., :6], reduction="none")
     motion = (motion.mean(-1) * mask).sum() / count
     gripper = F.binary_cross_entropy_with_logits(

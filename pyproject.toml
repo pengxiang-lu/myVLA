@@ -14,6 +14,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mt50 = [
+  "metaworld==3.0.0", "mujoco==3.3.0", "gymnasium==1.1.1",
+  "pyarrow>=18,<20", "imageio[ffmpeg]>=2.34,<3",
+]
 sim = [
   "robosuite==1.4.1", "mujoco==2.3.7", "bddl==1.0.1", "termcolor>=2,<4",
   "gym==0.26.2", "numba>=0.59,<0.62", "easydict>=1.9,<2",
@@ -24,6 +28,9 @@ sim = [
 
 [dependency-groups]
 dev = ["pytest>=8,<9", "ruff>=0.11,<0.12"]
+
+[tool.uv]
+conflicts = [[{ extra = "sim" }, { extra = "mt50" }]]
 
 [project.scripts]
 myvla = "myvla.cli:main"

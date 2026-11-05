@@ -26,7 +26,7 @@ def augment_images(images, shift=0, color_jitter=0.0):
         offsets = torch.randint(2 * shift + 1, (n, 2), device=x.device)
         rows = torch.arange(height, device=x.device)[None, :] + offsets[:, :1]
         cols = torch.arange(width, device=x.device)[None, :] + offsets[:, 1:]
-        x = padded.gather(2, rows[:, None, :, None].expand(n, channels, height, width + 2*shift))
+        x = padded.gather(2, rows[:, None, :, None].expand(n, channels, height, width + 2 * shift))
         x = x.gather(3, cols[:, None, None, :].expand(n, channels, height, width))
     if color_jitter:
         mean, std = CLIP_MEAN.to(x), CLIP_STD.to(x)
@@ -78,6 +78,8 @@ def normalize_state(state, stats):
 
 def normalize_actions(actions, stats):
     result = np.asarray(actions, np.float32).copy()
+    if len(stats["action_mean"]) == 4:
+        return (result - stats["action_mean"]) / stats["action_std"]
     result[..., :6] = (result[..., :6] - stats["action_mean"]) / stats["action_std"]
     # LIBERO Panda convention: negative=open, positive=close. Do not invert at rollout.
     result[..., 6] = (result[..., 6] > 0).astype(np.float32)
@@ -86,8 +88,11 @@ def normalize_actions(actions, stats):
 
 def decode_actions(predictions, stats):
     result = np.asarray(predictions, np.float32).copy()
-    result[..., :6] = result[..., :6] * stats["action_std"] + stats["action_mean"]
-    result[..., 6] = np.where(result[..., 6] >= 0, 1, -1)  # logit threshold
+    if len(stats["action_mean"]) == 4:
+        result = result * stats["action_std"] + stats["action_mean"]
+    else:
+        result[..., :6] = result[..., :6] * stats["action_std"] + stats["action_mean"]
+        result[..., 6] = np.where(result[..., 6] >= 0, 1, -1)  # logit threshold
     if not np.isfinite(result).all():
         raise ValueError("Non-finite actions; rollout stopped")
     return np.clip(result, -1, 1)

@@ -16,6 +16,9 @@ class ModelConfig:
     chunk_size: int = 8
     dropout: float = 0.1
     fusion_layers: int = 0
+    state_dim: int = 8
+    action_dim: int = 7
+    cameras: int = 2
 
 
 @dataclass
@@ -24,6 +27,7 @@ class DataConfig:
     pattern: str = "*_demo.hdf5"
     val_fraction: float = 0.1
     flip_vertical: bool = True
+    dataset: str = "libero"
 
 
 @dataclass
@@ -56,6 +60,15 @@ class Config:
 
     def validate(self):
         m, d, t = self.model, self.data, self.train
+        if d.dataset not in {"libero", "metaworld"}:
+            raise ValueError("data.dataset must be libero or metaworld")
+        expected = (8, 7, 2) if d.dataset == "libero" else (4, 4, 1)
+        if (m.state_dim, m.action_dim, m.cameras) != expected:
+            raise ValueError(f"{d.dataset} requires state_dim/action_dim/cameras={expected}")
+        if d.dataset == "metaworld" and d.flip_vertical:
+            raise ValueError(
+                "Converted MetaWorld RGB is already oriented; flip_vertical must be false"
+            )
         if m.backend not in {"clip", "tiny"}:
             raise ValueError("model.backend must be clip or tiny (offline smoke test only)")
         if min(m.hidden_dim, m.layers, m.heads, m.chunk_size, m.image_size) < 1:

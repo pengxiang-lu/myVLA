@@ -98,6 +98,8 @@ def evaluate(
     device = resolve_device(device_name)
     seed_everything(seed)
     policy, config, stats, payload = policy_from_checkpoint(checkpoint, device)
+    if config.data.dataset != "libero":
+        raise ValueError("Use eval-metaworld for a MetaWorld checkpoint")
     if config.model.backend != "clip":
         raise ValueError("Tiny random smoke model cannot be used for benchmark reporting")
     controller = Controller(policy, config, stats, device, execute_steps)

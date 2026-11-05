@@ -9,3 +9,4 @@ runs/
 third_party/
 .libero/
 models/
+.venv-mt50/

@@ -2,13 +2,21 @@ version = 1
 revision = 3
 requires-python = ">=3.10, <3.12"
 resolution-markers = [
-    "python_full_version >= '3.11' and sys_platform == 'darwin'",
-    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
-    "python_full_version < '3.11' and sys_platform == 'darwin'",
-    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "python_full_version >= '3.11' and sys_platform == 'darwin' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')",
+    "python_full_version < '3.11' and sys_platform == 'darwin' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')",
+    "python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
+    "python_full_version < '3.11' and extra == 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
+    "python_full_version >= '3.11' and extra != 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
+    "python_full_version < '3.11' and extra != 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
 ]
+conflicts = [[
+    { package = "myvla", extra = "mt50" },
+    { package = "myvla", extra = "sim" },
+]]
 
 [[package]]
 name = "absl-py"
@@ -34,8 +42,8 @@ version = "1.0.1"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "jupytext" },
-    { name = "networkx", version = "3.4.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "networkx", version = "3.6.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "networkx", version = "3.4.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "networkx", version = "3.6.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "numpy" },
     { name = "pytest" },
 ]
@@ -218,6 +226,45 @@ wheels = [
 ]
 
 [[package]]
+name = "etils"
+version = "1.13.0"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+resolution-markers = [
+    "python_full_version < '3.11'",
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/9b/a0/522bbff0f3cdd37968f90dd7f26c7aa801ed87f5ba335f156de7f2b88a48/etils-1.13.0.tar.gz", hash = "sha256:a5b60c71f95bcd2d43d4e9fb3dc3879120c1f60472bb5ce19f7a860b1d44f607" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/e7/98/87b5946356095738cb90a6df7b35ff69ac5750f6e783d5fbcc5cb3b6cbd7/etils-1.13.0-py3-none-any.whl", hash = "sha256:d9cd4f40fbe77ad6613b7348a18132cc511237b6c076dbb89105c0b520a4c6bb" },
+]
+
+[package.optional-dependencies]
+epath = [
+    { name = "fsspec", marker = "python_full_version < '3.11'" },
+    { name = "importlib-resources", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+    { name = "zipp", marker = "python_full_version < '3.11'" },
+]
+
+[[package]]
+name = "etils"
+version = "1.15.0"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+resolution-markers = [
+    "python_full_version >= '3.11'",
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/64/c5/4d5bad0fe45b2b894d8fc8b61f3ea4b8e38abd0aed2386b20393ad12190f/etils-1.15.0.tar.gz", hash = "sha256:7a7e242b299813f454d3c2910b8428fd5758ef3c6df58af4808fd0a511f0a032" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/0f/67/95b34e8557551d01e35005dc3059f13d1380bb46867cd580beed8bf95171/etils-1.15.0-py3-none-any.whl", hash = "sha256:b9e7f3d7ab980c564245cd54e2b928e6abcb0521d6042ad3fdb13eea725309f0" },
+]
+
+[package.optional-dependencies]
+epath = [
+    { name = "fsspec", marker = "python_full_version >= '3.11'" },
+    { name = "typing-extensions", marker = "python_full_version >= '3.11'" },
+    { name = "zipp", marker = "python_full_version >= '3.11'" },
+]
+
+[[package]]
 name = "evdev"
 version = "1.9.3"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
@@ -244,11 +291,20 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219" }
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/8a/0e/97c33bf5009bdbac74fd2beace167cab3f978feb69cc36f1ef79360d6c4e/exceptiongroup-1.3.1-py3-none-any.whl", hash = "sha256:a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598" },
+]
+
+[[package]]
+name = "farama-notifications"
+version = "0.0.6"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/ec/91/14397890dde30adc4bee6462158933806207bc5dd10d7b4d09d5c33845cf/farama_notifications-0.0.6.tar.gz", hash = "sha256:b19acac4bb41d76e59e03394b5dd165f4761c86fa327f56307a35cbee3b60158" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/7c/f0/21f81892e4ed10f4ec3ef2e7cf8635fb76e7c0907c55d0da66be50094760/farama_notifications-0.0.6-py3-none-any.whl", hash = "sha256:f84839188efa1ce5bb361c2a84881b2dc2c0d0d7fb661ff00421820170930935" },
 ]
 
 [[package]]
@@ -265,9 +321,11 @@ name = "filelock"
 version = "4.1.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 resolution-markers = [
-    "python_full_version < '3.11' and sys_platform == 'darwin'",
-    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "python_full_version < '3.11' and sys_platform == 'darwin' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')",
+    "python_full_version < '3.11' and extra == 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
+    "python_full_version < '3.11' and extra != 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/4c/58/6fd434bec86eff7c38a3168454cb132b762b2bea9b3ac094101a2f7bc32a/filelock-4.1.0.tar.gz", hash = "sha256:ad7f724afef953e731b1cc39bcd3a09166d72ed7fcdf29e6e88b1c3235c6715d" }
 wheels = [
@@ -279,9 +337,11 @@ name = "filelock"
 version = "4.2.6"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 resolution-markers = [
-    "python_full_version >= '3.11' and sys_platform == 'darwin'",
-    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "python_full_version >= '3.11' and sys_platform == 'darwin' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')",
+    "python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
+    "python_full_version >= '3.11' and extra != 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/35/6c/730b340182f1fd74d4ef8d3f35431ce84f8f97b1a1f2afd145174b7bb047/filelock-4.2.6.tar.gz", hash = "sha256:ee7af8ede36dcaf12e1016d9f7c3a63ecd5497d46f85dab21b8c779b8f944e97" }
 wheels = [
@@ -397,6 +457,21 @@ wheels = [
 ]
 
 [[package]]
+name = "gymnasium"
+version = "1.1.1"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+dependencies = [
+    { name = "cloudpickle" },
+    { name = "farama-notifications" },
+    { name = "numpy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/90/69/70cd29e9fc4953d013b15981ee71d4c9ef4d8b2183e6ef2fe89756746dce/gymnasium-1.1.1.tar.gz", hash = "sha256:8bd9ea9bdef32c950a444ff36afc785e1d81051ec32d30435058953c20d2456d" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/f9/68/2bdc7b46b5f543dd865575f9d19716866bdb76e50dd33b71ed1a3dd8bb42/gymnasium-1.1.1-py3-none-any.whl", hash = "sha256:9c167ec0a2b388666e37f63b2849cd2552f7f5b71938574c637bb36487eb928a" },
+]
+
+[[package]]
 name = "h5py"
 version = "3.16.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
@@ -443,10 +518,10 @@ name = "huggingface-hub"
 version = "0.36.2"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "filelock", version = "4.1.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "filelock", version = "4.2.6", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "filelock", version = "4.1.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "filelock", version = "4.2.6", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "fsspec" },
-    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'" },
+    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -472,9 +547,10 @@ name = "imageio"
 version = "2.38.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 resolution-markers = [
-    "python_full_version < '3.11' and sys_platform == 'darwin'",
-    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "python_full_version < '3.11' and sys_platform == 'darwin' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')",
+    "python_full_version < '3.11' and extra == 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
 ]
 dependencies = [
     { name = "numpy", marker = "python_full_version < '3.11'" },
@@ -496,9 +572,10 @@ name = "imageio"
 version = "2.38.1"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 resolution-markers = [
-    "python_full_version >= '3.11' and sys_platform == 'darwin'",
-    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "python_full_version >= '3.11' and sys_platform == 'darwin' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')",
+    "python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
 ]
 dependencies = [
     { name = "numpy", marker = "python_full_version >= '3.11'" },
@@ -530,6 +607,15 @@ wheels = [
 ]
 
 [[package]]
+name = "importlib-resources"
+version = "7.1.0"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/e4/06/b56dfa750b44e86157093bc8fca0ab81dccbf5260510de4eaf1cb69b5b99/importlib_resources-7.1.0.tar.gz", hash = "sha256:0722d4c6212489c530f2a145a34c0a7a3b4721bc96a15fada5930e2a0b760708" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/8a/db/55a262f3606bebcae07cc14095338471ad7c0bbcaa37707e6f0ee49725b7/importlib_resources-7.1.0-py3-none-any.whl", hash = "sha256:1bd7b48b4088eddb2cd16382150bb515af0bd2c70128194392725f82ad2c96a1" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.1"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
@@ -558,8 +644,8 @@ dependencies = [
     { name = "attrs" },
     { name = "jsonschema-specifications" },
     { name = "referencing" },
-    { name = "rpds-py", version = "0.30.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "rpds-py", version = "2026.9.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "rpds-py", version = "0.30.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "rpds-py", version = "2026.9.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/b3/fc/e067678238fa451312d4c62bf6e6cf5ec56375422aee02f9cb5f909b3047/jsonschema-4.26.0.tar.gz", hash = "sha256:0c26707e2efad8aa1bfc5b7ce170f3fccc2e4918ff85989ba9ffa9facb2be326" }
 wheels = [
@@ -583,8 +669,8 @@ name = "jupyter-core"
 version = "5.9.1"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "platformdirs", version = "4.12.4", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "platformdirs", version = "4.14.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "platformdirs", version = "4.12.4", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "platformdirs", version = "4.14.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "traitlets" },
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/02/49/9d1284d0dc65e2c757b74c6687b6d319b02f822ad039e5c512df9194d9dd/jupyter_core-5.9.1.tar.gz", hash = "sha256:4d09aaff303b9566c3ce657f580bd089ff5c91f5f89cf7d8846c3cdf465b5508" }
@@ -728,11 +814,11 @@ name = "matplotlib"
 version = "3.10.9"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "contourpy", version = "1.3.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "contourpy", version = "1.3.3", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "contourpy", version = "1.3.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "contourpy", version = "1.3.3", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "cycler" },
-    { name = "fonttools", version = "4.65.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "fonttools", version = "4.68.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "fonttools", version = "4.65.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "fonttools", version = "4.68.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "kiwisolver" },
     { name = "numpy" },
     { name = "packaging" },
@@ -785,6 +871,24 @@ wheels = [
 ]
 
 [[package]]
+name = "metaworld"
+version = "3.0.0"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+dependencies = [
+    { name = "gymnasium" },
+    { name = "imageio", version = "2.38.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-mt50') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "imageio", version = "2.38.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "mujoco", version = "3.3.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" } },
+    { name = "numpy" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-mt50') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/8e/ea/ee112af5a58de09a1fdf33e8ba11cd38327c9b7a11049325a62055a66e37/metaworld-3.0.0.tar.gz", hash = "sha256:5f30950a5c71e4054c3d6d0293da13eddda9806a43f85cf576cf9632efd2cc87" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/29/e1/c758357e82c2deb2401a7214fbfbc6ddf09b5453371dee1b7a2da0aab274/metaworld-3.0.0-py3-none-any.whl", hash = "sha256:f1dd9f8a1bcceab34a5f3c20113724dd90d21984ae89df98c21c842eb3ece137" },
+]
+
+[[package]]
 name = "mpmath"
 version = "1.3.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
@@ -797,6 +901,14 @@ wheels = [
 name = "mujoco"
 version = "2.3.7"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+resolution-markers = [
+    "python_full_version >= '3.11' and sys_platform == 'darwin'",
+    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "python_full_version < '3.11' and sys_platform == 'darwin'",
+    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+]
 dependencies = [
     { name = "absl-py" },
     { name = "glfw" },
@@ -820,6 +932,36 @@ wheels = [
 ]
 
 [[package]]
+name = "mujoco"
+version = "3.3.0"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+resolution-markers = [
+    "python_full_version >= '3.11'",
+    "python_full_version < '3.11'",
+]
+dependencies = [
+    { name = "absl-py" },
+    { name = "etils", version = "1.13.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, extra = ["epath"], marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-mt50') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "etils", version = "1.15.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, extra = ["epath"], marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "glfw" },
+    { name = "numpy" },
+    { name = "pyopengl" },
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/8a/c6/76716fd205ccd0afbaef8b355555ace70347bd02c921d14e05e68eab3dbb/mujoco-3.3.0.tar.gz", hash = "sha256:0fb12ab715bc2b6d2394a6330b8c3a1dd95b0f3ba812bfe4f6c91e0a1ca3ad0f" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/0c/f4/21ff1dc849ff6ab8f2fc29d6d6286ab5e03c25ac7cced3bcbbe052c257be/mujoco-3.3.0-cp310-cp310-macosx_10_16_x86_64.whl", hash = "sha256:676285e5a752e5b937fc79ff56cad6d62021992e6800d8085ab316c67d7b0ee4" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/ca/3b/22acd7de2cf66839a3e49b57cc428ab6816764f128209a80578403eac83d/mujoco-3.3.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:a6991fe6b255eabf5c62c8a3dffa2e04a51bd74d04de42869c322da1c4279562" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/38/5b/b257c5a6435258a4ce908befa7131b94991ecf95639a58e14daf616d5edd/mujoco-3.3.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1dd0db1edaabf4a1beccdacfe9c2c313eb47b25bc4016d9a2f97771d0e9dfa89" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/71/75/f9c7fcf11f878213c2bd5af69dd6d73914efe3a60ac031c6e3e305a392db/mujoco-3.3.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:946ee6c90c4f6c4ef26502cc8a469b3dc7bd7286d8efb3dc935fa0bf8a3a11e5" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/f4/b3/aec72a24b473394c4f6ed1cc9734f11721dd8eda354c85a768e3e9bf1019/mujoco-3.3.0-cp310-cp310-win_amd64.whl", hash = "sha256:d84988f3c7e2dc2238a84c565f8c30b7e66caddd9d95b4f0d291902b6af749f3" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/11/aa/a0b20e86e9944fdbdbea004974df1426f4bc532c9711112012e89a56a389/mujoco-3.3.0-cp311-cp311-macosx_10_16_x86_64.whl", hash = "sha256:d61157a53356c790ef73d4ec918288c2dd7d0da26eaa1de8f56cffbdcd1ca275" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/b5/12/5a158a125114e35409e60dedeb694bf80d7e3a02c99edc8734ed352baff2/mujoco-3.3.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:60025a554e444a85d3183714115f48ea4582c5c654f120c5f7652e22260b0069" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/81/85/f7dbcc704710e304cd1220fcdb505e5f0d142c741850efaf33950ab5bc51/mujoco-3.3.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ff984aaec2006effe12fbb8bc29fbc0abb82b4332891307d99e637791067e912" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/05/9e/a0cd11d0501421d547d74ad0de092912c2e4952b9663f7807e32a9cbcf1b/mujoco-3.3.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1403630afb922ab2cb7aa7310b5cb596a5568ee4250f96e663c9f365353cab00" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/03/56/f5d8e2ac2df979044cb18c8862de7be9c2247921f8f7b06d45d3daf99c15/mujoco-3.3.0-cp311-cp311-win_amd64.whl", hash = "sha256:436d863747fea327393a46f04d7aeaea6acf27b961b54dbdde32a823e90355eb" },
+]
+
+[[package]]
 name = "myvla"
 version = "0.1.0"
 source = { editable = "." }
@@ -833,16 +975,24 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+mt50 = [
+    { name = "gymnasium" },
+    { name = "imageio", version = "2.38.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, extra = ["ffmpeg"], marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-mt50') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "imageio", version = "2.38.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, extra = ["ffmpeg"], marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "metaworld" },
+    { name = "mujoco", version = "3.3.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" } },
+    { name = "pyarrow" },
+]
 sim = [
     { name = "bddl" },
     { name = "cloudpickle" },
     { name = "easydict" },
     { name = "future" },
     { name = "gym" },
-    { name = "imageio", version = "2.38.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, extra = ["ffmpeg"], marker = "python_full_version < '3.11'" },
-    { name = "imageio", version = "2.38.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, extra = ["ffmpeg"], marker = "python_full_version >= '3.11'" },
+    { name = "imageio", version = "2.38.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, extra = ["ffmpeg"], marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "imageio", version = "2.38.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, extra = ["ffmpeg"], marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "matplotlib" },
-    { name = "mujoco" },
+    { name = "mujoco", version = "2.3.7", source = { registry = "https://mirrors.aliyun.com/pypi/simple" } },
     { name = "numba" },
     { name = "robosuite" },
     { name = "termcolor" },
@@ -861,20 +1011,25 @@ requires-dist = [
     { name = "easydict", marker = "extra == 'sim'", specifier = ">=1.9,<2" },
     { name = "future", marker = "extra == 'sim'", specifier = ">=0.18.3,<2" },
     { name = "gym", marker = "extra == 'sim'", specifier = "==0.26.2" },
+    { name = "gymnasium", marker = "extra == 'mt50'", specifier = "==1.1.1" },
     { name = "h5py", specifier = ">=3.11,<4" },
+    { name = "imageio", extras = ["ffmpeg"], marker = "extra == 'mt50'", specifier = ">=2.34,<3" },
     { name = "imageio", extras = ["ffmpeg"], marker = "extra == 'sim'", specifier = ">=2.34,<3" },
     { name = "matplotlib", marker = "extra == 'sim'", specifier = ">=3.8,<3.11" },
+    { name = "metaworld", marker = "extra == 'mt50'", specifier = "==3.0.0" },
+    { name = "mujoco", marker = "extra == 'mt50'", specifier = "==3.3.0" },
     { name = "mujoco", marker = "extra == 'sim'", specifier = "==2.3.7" },
     { name = "numba", marker = "extra == 'sim'", specifier = ">=0.59,<0.62" },
     { name = "numpy", specifier = "==1.26.4" },
     { name = "pillow", specifier = ">=10.4,<12" },
+    { name = "pyarrow", marker = "extra == 'mt50'", specifier = ">=18,<20" },
     { name = "pyyaml", specifier = ">=6.0.2,<7" },
     { name = "robosuite", marker = "extra == 'sim'", specifier = "==1.4.1" },
     { name = "termcolor", marker = "extra == 'sim'", specifier = ">=2,<4" },
     { name = "torch", specifier = "==2.6.0" },
     { name = "transformers", specifier = "==4.57.6" },
 ]
-provides-extras = ["sim"]
+provides-extras = ["mt50", "sim"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -902,9 +1057,11 @@ name = "networkx"
 version = "3.4.2"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 resolution-markers = [
-    "python_full_version < '3.11' and sys_platform == 'darwin'",
-    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "python_full_version < '3.11' and sys_platform == 'darwin' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')",
+    "python_full_version < '3.11' and extra == 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
+    "python_full_version < '3.11' and extra != 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/fd/1d/06475e1cd5264c0b870ea2cc6fdb3e37177c1e565c43f56ff17a10e3937f/networkx-3.4.2.tar.gz", hash = "sha256:307c3669428c5362aab27c8a1260aa8f47c4e91d3891f48be0141738d8d053e1" }
 wheels = [
@@ -916,9 +1073,11 @@ name = "networkx"
 version = "3.6.1"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 resolution-markers = [
-    "python_full_version >= '3.11' and sys_platform == 'darwin'",
-    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "python_full_version >= '3.11' and sys_platform == 'darwin' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')",
+    "python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
+    "python_full_version >= '3.11' and extra != 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/6a/51/63fe664f3908c97be9d2e4f1158eb633317598cfa6e1fc14af5383f17512/networkx-3.6.1.tar.gz", hash = "sha256:26b7c357accc0c8cde558ad486283728b65b6a95d85ee1cd66bafab4c8168509" }
 wheels = [
@@ -976,7 +1135,9 @@ name = "nvidia-cublas-cu12"
 version = "12.4.5.8"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/7f/7f/7fbae15a3982dc9595e49ce0f19332423b260045d0a6afe93cdbe2f1f624/nvidia_cublas_cu12-12.4.5.8-py3-none-manylinux2014_aarch64.whl", hash = "sha256:0f8aa1706812e00b9f19dfe0cdb3999b092ccb8ca168c0db5b8ea712456fd9b3" },
     { url = "https://mirrors.aliyun.com/pypi/packages/ae/71/1c91302526c45ab494c23f61c7a84aa568b8c1f9d196efa5993957faf906/nvidia_cublas_cu12-12.4.5.8-py3-none-manylinux2014_x86_64.whl", hash = "sha256:2fc8da60df463fdefa81e323eef2e36489e1c94335b5358bcb38360adf75ac9b" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/e2/2a/4f27ca96232e8b5269074a72e03b4e0d43aa68c9b965058b1684d07c6ff8/nvidia_cublas_cu12-12.4.5.8-py3-none-win_amd64.whl", hash = "sha256:5a796786da89203a0657eda402bcdcec6180254a8ac22d72213abc42069522dc" },
 ]
 
 [[package]]
@@ -984,7 +1145,9 @@ name = "nvidia-cuda-cupti-cu12"
 version = "12.4.127"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/93/b5/9fb3d00386d3361b03874246190dfec7b206fd74e6e287b26a8fcb359d95/nvidia_cuda_cupti_cu12-12.4.127-py3-none-manylinux2014_aarch64.whl", hash = "sha256:79279b35cf6f91da114182a5ce1864997fd52294a87a16179ce275773799458a" },
     { url = "https://mirrors.aliyun.com/pypi/packages/67/42/f4f60238e8194a3106d06a058d494b18e006c10bb2b915655bd9f6ea4cb1/nvidia_cuda_cupti_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl", hash = "sha256:9dec60f5ac126f7bb551c055072b69d85392b13311fcc1bcda2202d172df30fb" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/f3/79/8cf313ec17c58ccebc965568e5bcb265cdab0a1df99c4e674bb7a3b99bfe/nvidia_cuda_cupti_cu12-12.4.127-py3-none-win_amd64.whl", hash = "sha256:5688d203301ab051449a2b1cb6690fbe90d2b372f411521c86018b950f3d7922" },
 ]
 
 [[package]]
@@ -992,7 +1155,9 @@ name = "nvidia-cuda-nvrtc-cu12"
 version = "12.4.127"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/77/aa/083b01c427e963ad0b314040565ea396f914349914c298556484f799e61b/nvidia_cuda_nvrtc_cu12-12.4.127-py3-none-manylinux2014_aarch64.whl", hash = "sha256:0eedf14185e04b76aa05b1fea04133e59f465b6f960c0cbf4e37c3cb6b0ea198" },
     { url = "https://mirrors.aliyun.com/pypi/packages/2c/14/91ae57cd4db3f9ef7aa99f4019cfa8d54cb4caa7e00975df6467e9725a9f/nvidia_cuda_nvrtc_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl", hash = "sha256:a178759ebb095827bd30ef56598ec182b85547f1508941a3d560eb7ea1fbf338" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/7c/30/8c844bfb770f045bcd8b2c83455c5afb45983e1a8abf0c4e5297b481b6a5/nvidia_cuda_nvrtc_cu12-12.4.127-py3-none-win_amd64.whl", hash = "sha256:a961b2f1d5f17b14867c619ceb99ef6fcec12e46612711bcec78eb05068a60ec" },
 ]
 
 [[package]]
@@ -1000,7 +1165,9 @@ name = "nvidia-cuda-runtime-cu12"
 version = "12.4.127"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/a1/aa/b656d755f474e2084971e9a297def515938d56b466ab39624012070cb773/nvidia_cuda_runtime_cu12-12.4.127-py3-none-manylinux2014_aarch64.whl", hash = "sha256:961fe0e2e716a2a1d967aab7caee97512f71767f852f67432d572e36cb3a11f3" },
     { url = "https://mirrors.aliyun.com/pypi/packages/ea/27/1795d86fe88ef397885f2e580ac37628ed058a92ed2c39dc8eac3adf0619/nvidia_cuda_runtime_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl", hash = "sha256:64403288fa2136ee8e467cdc9c9427e0434110899d07c779f25b5c068934faa5" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/a8/8b/450e93fab75d85a69b50ea2d5fdd4ff44541e0138db16f9cd90123ef4de4/nvidia_cuda_runtime_cu12-12.4.127-py3-none-win_amd64.whl", hash = "sha256:09c2e35f48359752dfa822c09918211844a3d93c100a715d79b59591130c5e1e" },
 ]
 
 [[package]]
@@ -1008,10 +1175,11 @@ name = "nvidia-cudnn-cu12"
 version = "9.1.0.70"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'darwin' and extra != 'extra-5-myvla-sim') or (sys_platform == 'linux' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'linux' and extra != 'extra-5-myvla-sim')" },
 ]
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/9f/fd/713452cd72343f682b1c7b9321e23829f00b842ceaedcda96e742ea0b0b3/nvidia_cudnn_cu12-9.1.0.70-py3-none-manylinux2014_x86_64.whl", hash = "sha256:165764f44ef8c61fcdfdfdbe769d687e06374059fbb388b6c89ecb0e28793a6f" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/3f/d0/f90ee6956a628f9f04bf467932c0a25e5a7e706a684b896593c06c82f460/nvidia_cudnn_cu12-9.1.0.70-py3-none-win_amd64.whl", hash = "sha256:6278562929433d68365a07a4a1546c237ba2849852c0d4b2262a486e805b977a" },
 ]
 
 [[package]]
@@ -1019,10 +1187,12 @@ name = "nvidia-cufft-cu12"
 version = "11.2.1.3"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'darwin' and extra != 'extra-5-myvla-sim') or (sys_platform == 'linux' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'linux' and extra != 'extra-5-myvla-sim')" },
 ]
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/7a/8a/0e728f749baca3fbeffad762738276e5df60851958be7783af121a7221e7/nvidia_cufft_cu12-11.2.1.3-py3-none-manylinux2014_aarch64.whl", hash = "sha256:5dad8008fc7f92f5ddfa2101430917ce2ffacd86824914c82e28990ad7f00399" },
     { url = "https://mirrors.aliyun.com/pypi/packages/27/94/3266821f65b92b3138631e9c8e7fe1fb513804ac934485a8d05776e1dd43/nvidia_cufft_cu12-11.2.1.3-py3-none-manylinux2014_x86_64.whl", hash = "sha256:f083fc24912aa410be21fa16d157fed2055dab1cc4b6934a0e03cba69eb242b9" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/f6/ee/3f3f8e9874f0be5bbba8fb4b62b3de050156d159f8b6edc42d6f1074113b/nvidia_cufft_cu12-11.2.1.3-py3-none-win_amd64.whl", hash = "sha256:d802f4954291101186078ccbe22fc285a902136f974d369540fd4a5333d1440b" },
 ]
 
 [[package]]
@@ -1030,7 +1200,9 @@ name = "nvidia-curand-cu12"
 version = "10.3.5.147"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/80/9c/a79180e4d70995fdf030c6946991d0171555c6edf95c265c6b2bf7011112/nvidia_curand_cu12-10.3.5.147-py3-none-manylinux2014_aarch64.whl", hash = "sha256:1f173f09e3e3c76ab084aba0de819c49e56614feae5c12f69883f4ae9bb5fad9" },
     { url = "https://mirrors.aliyun.com/pypi/packages/8a/6d/44ad094874c6f1b9c654f8ed939590bdc408349f137f9b98a3a23ccec411/nvidia_curand_cu12-10.3.5.147-py3-none-manylinux2014_x86_64.whl", hash = "sha256:a88f583d4e0bb643c49743469964103aa59f7f708d862c3ddb0fc07f851e3b8b" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/1c/22/2573503d0d4e45673c263a313f79410e110eb562636b0617856fdb2ff5f6/nvidia_curand_cu12-10.3.5.147-py3-none-win_amd64.whl", hash = "sha256:f307cc191f96efe9e8f05a87096abc20d08845a841889ef78cb06924437f6771" },
 ]
 
 [[package]]
@@ -1038,12 +1210,14 @@ name = "nvidia-cusolver-cu12"
 version = "11.6.1.9"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
-    { name = "nvidia-cusparse-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'darwin' and extra != 'extra-5-myvla-sim') or (sys_platform == 'linux' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'linux' and extra != 'extra-5-myvla-sim')" },
+    { name = "nvidia-cusparse-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'darwin' and extra != 'extra-5-myvla-sim') or (sys_platform == 'linux' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'linux' and extra != 'extra-5-myvla-sim')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'darwin' and extra != 'extra-5-myvla-sim') or (sys_platform == 'linux' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'linux' and extra != 'extra-5-myvla-sim')" },
 ]
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/46/6b/a5c33cf16af09166845345275c34ad2190944bcc6026797a39f8e0a282e0/nvidia_cusolver_cu12-11.6.1.9-py3-none-manylinux2014_aarch64.whl", hash = "sha256:d338f155f174f90724bbde3758b7ac375a70ce8e706d70b018dd3375545fc84e" },
     { url = "https://mirrors.aliyun.com/pypi/packages/3a/e1/5b9089a4b2a4790dfdea8b3a006052cfecff58139d5a4e34cb1a51df8d6f/nvidia_cusolver_cu12-11.6.1.9-py3-none-manylinux2014_x86_64.whl", hash = "sha256:19e33fa442bcfd085b3086c4ebf7e8debc07cfe01e11513cc6d332fd918ac260" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/f2/be/d435b7b020e854d5d5a682eb5de4328fd62f6182507406f2818280e206e2/nvidia_cusolver_cu12-11.6.1.9-py3-none-win_amd64.whl", hash = "sha256:e77314c9d7b694fcebc84f58989f3aa4fb4cb442f12ca1a9bde50f5e8f6d1b9c" },
 ]
 
 [[package]]
@@ -1051,10 +1225,12 @@ name = "nvidia-cusparse-cu12"
 version = "12.3.1.170"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux') or (sys_platform == 'darwin' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'darwin' and extra != 'extra-5-myvla-sim') or (sys_platform == 'linux' and extra == 'extra-5-myvla-mt50') or (sys_platform == 'linux' and extra != 'extra-5-myvla-sim')" },
 ]
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/96/a9/c0d2f83a53d40a4a41be14cea6a0bf9e668ffcf8b004bd65633f433050c0/nvidia_cusparse_cu12-12.3.1.170-py3-none-manylinux2014_aarch64.whl", hash = "sha256:9d32f62896231ebe0480efd8a7f702e143c98cfaa0e8a76df3386c1ba2b54df3" },
     { url = "https://mirrors.aliyun.com/pypi/packages/db/f7/97a9ea26ed4bbbfc2d470994b8b4f338ef663be97b8f677519ac195e113d/nvidia_cusparse_cu12-12.3.1.170-py3-none-manylinux2014_x86_64.whl", hash = "sha256:ea4f11a2904e2a8dc4b1833cc1b5181cde564edd0d5cd33e3c168eff2d1863f1" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/a2/e0/3155ca539760a8118ec94cc279b34293309bcd14011fc724f87f31988843/nvidia_cusparse_cu12-12.3.1.170-py3-none-win_amd64.whl", hash = "sha256:9bc90fb087bc7b4c15641521f31c0371e9a612fc2ba12c338d3ae032e6b6797f" },
 ]
 
 [[package]]
@@ -1062,7 +1238,9 @@ name = "nvidia-cusparselt-cu12"
 version = "0.6.2"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/98/8e/675498726c605c9441cf46653bd29cb1b8666da1fb1469ffa25f67f20c58/nvidia_cusparselt_cu12-0.6.2-py3-none-manylinux2014_aarch64.whl", hash = "sha256:067a7f6d03ea0d4841c85f0c6f1991c5dda98211f6302cb83a4ab234ee95bef8" },
     { url = "https://mirrors.aliyun.com/pypi/packages/78/a8/bcbb63b53a4b1234feeafb65544ee55495e1bb37ec31b999b963cbccfd1d/nvidia_cusparselt_cu12-0.6.2-py3-none-manylinux2014_x86_64.whl", hash = "sha256:df2c24502fd76ebafe7457dbc4716b2fec071aabaed4fb7691a201cde03704d9" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/56/8f/2c33082238b6c5e783a877dc8786ab62619e3e6171c083bd3bba6e3fe75e/nvidia_cusparselt_cu12-0.6.2-py3-none-win_amd64.whl", hash = "sha256:0057c91d230703924c0422feabe4ce768841f9b4b44d28586b6f6d2eb86fbe70" },
 ]
 
 [[package]]
@@ -1078,7 +1256,9 @@ name = "nvidia-nvjitlink-cu12"
 version = "12.4.127"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/02/45/239d52c05074898a80a900f49b1615d81c07fceadd5ad6c4f86a987c0bc4/nvidia_nvjitlink_cu12-12.4.127-py3-none-manylinux2014_aarch64.whl", hash = "sha256:4abe7fef64914ccfa909bc2ba39739670ecc9e820c83ccc7a6ed414122599b83" },
     { url = "https://mirrors.aliyun.com/pypi/packages/ff/ff/847841bacfbefc97a00036e0fce5a0f086b640756dc38caea5e1bb002655/nvidia_nvjitlink_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl", hash = "sha256:06b3b9b25bf3f8af351d664978ca26a16d2c5127dbd53c0497e28d1fb9611d57" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/81/19/0babc919031bee42620257b9a911c528f05fb2688520dcd9ca59159ffea8/nvidia_nvjitlink_cu12-12.4.127-py3-none-win_amd64.whl", hash = "sha256:fd9020c501d27d135f983c6d3e244b197a7ccad769e34df53a42e276b0e25fa1" },
 ]
 
 [[package]]
@@ -1086,7 +1266,9 @@ name = "nvidia-nvtx-cu12"
 version = "12.4.127"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/06/39/471f581edbb7804b39e8063d92fc8305bdc7a80ae5c07dbe6ea5c50d14a5/nvidia_nvtx_cu12-12.4.127-py3-none-manylinux2014_aarch64.whl", hash = "sha256:7959ad635db13edf4fc65c06a6e9f9e55fc2f92596db928d169c0bb031e88ef3" },
     { url = "https://mirrors.aliyun.com/pypi/packages/87/20/199b8713428322a2f22b722c62b8cc278cc53dffa9705d744484b5035ee9/nvidia_nvtx_cu12-12.4.127-py3-none-manylinux2014_x86_64.whl", hash = "sha256:781e950d9b9f60d8241ccea575b32f5105a5baf4c2351cab5256a24869f12a1a" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/54/1b/f77674fbb73af98843be25803bbd3b9a4f0a96c75b8d33a2854a5c7d2d77/nvidia_nvtx_cu12-12.4.127-py3-none-win_amd64.whl", hash = "sha256:641dccaaa1139f3ffb0d3164b4b84f9d253397e38246a4f2f36728b48566d485" },
 ]
 
 [[package]]
@@ -1213,6 +1395,28 @@ wheels = [
 ]
 
 [[package]]
+name = "pyarrow"
+version = "19.0.1"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/7f/09/a9046344212690f0632b9c709f9bf18506522feb333c894d0de81d62341a/pyarrow-19.0.1.tar.gz", hash = "sha256:3bf266b485df66a400f282ac0b6d1b500b9d2ae73314a153dbe97d6d5cc8a99e" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/36/01/b23b514d86b839956238d3f8ef206fd2728eee87ff1b8ce150a5678d9721/pyarrow-19.0.1-cp310-cp310-macosx_12_0_arm64.whl", hash = "sha256:fc28912a2dc924dddc2087679cc8b7263accc71b9ff025a1362b004711661a69" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/c6/68/218ff7cf4a0652a933e5f2ed11274f724dd43b9813cb18dd72c0a35226a2/pyarrow-19.0.1-cp310-cp310-macosx_12_0_x86_64.whl", hash = "sha256:fca15aabbe9b8355800d923cc2e82c8ef514af321e18b437c3d782aa884eaeec" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/98/01/c295050d183014f4a2eb796d7d2bbfa04b6cccde7258bb68aacf6f18779b/pyarrow-19.0.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ad76aef7f5f7e4a757fddcdcf010a8290958f09e3470ea458c80d26f4316ae89" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/40/17/a6c3db0b5f3678f33bbb552d2acbc16def67f89a72955b67b0109af23eb0/pyarrow-19.0.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d03c9d6f2a3dffbd62671ca070f13fc527bb1867b4ec2b98c7eeed381d4f389a" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/cf/75/c7c8e599300d8cebb6cb339014800e1c720c9db2a3fcb66aa64ec84bac72/pyarrow-19.0.1-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:65cf9feebab489b19cdfcfe4aa82f62147218558d8d3f0fc1e9dea0ab8e7905a" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/ef/c9/68ab123ee1528699c4d5055f645ecd1dd68ff93e4699527249d02f55afeb/pyarrow-19.0.1-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:41f9706fbe505e0abc10e84bf3a906a1338905cbbcf1177b71486b03e6ea6608" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/54/e3/d5cfd7654084e6c0d9c3ce949e5d9e0ccad569ae1e2d5a68a3ec03b2be89/pyarrow-19.0.1-cp310-cp310-win_amd64.whl", hash = "sha256:c6cb2335a411b713fdf1e82a752162f72d4a7b5dbc588e32aa18383318b05866" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/a0/55/f1a8d838ec07fe3ca53edbe76f782df7b9aafd4417080eebf0b42aab0c52/pyarrow-19.0.1-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:cc55d71898ea30dc95900297d191377caba257612f384207fe9f8293b5850f90" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/13/12/428861540bb54c98a140ae858a11f71d041ef9e501e6b7eb965ca7909505/pyarrow-19.0.1-cp311-cp311-macosx_12_0_x86_64.whl", hash = "sha256:7a544ec12de66769612b2d6988c36adc96fb9767ecc8ee0a4d270b10b1c51e00" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/2f/8a/23d7cc5ae2066c6c736bce1db8ea7bc9ac3ef97ac7e1c1667706c764d2d9/pyarrow-19.0.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0148bb4fc158bfbc3d6dfe5001d93ebeed253793fff4435167f6ce1dc4bddeae" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/a2/7a/845d151bb81a892dfb368bf11db584cf8b216963ccce40a5cf50a2492a18/pyarrow-19.0.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f24faab6ed18f216a37870d8c5623f9c044566d75ec586ef884e13a02a9d62c5" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/a7/31/e7282d79a70816132cf6cae7e378adfccce9ae10352d21c2fecf9d9756dd/pyarrow-19.0.1-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:4982f8e2b7afd6dae8608d70ba5bd91699077323f812a0448d8b7abdff6cb5d3" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/b8/82/20f3c290d6e705e2ee9c1fa1d5a0869365ee477e1788073d8b548da8b64c/pyarrow-19.0.1-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:49a3aecb62c1be1d822f8bf629226d4a96418228a42f5b40835c1f10d42e4db6" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/ff/77/e62aebd343238863f2c9f080ad2ef6ace25c919c6ab383436b5b81cbeef7/pyarrow-19.0.1-cp311-cp311-win_amd64.whl", hash = "sha256:008a4009efdb4ea3d2e18f05cd31f9d43c388aad29c636112c2966605ba33466" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.21.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
@@ -1226,12 +1430,12 @@ name = "pynput"
 version = "1.8.2"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "evdev", version = "1.9.3", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11' and 'linux' in sys_platform" },
-    { name = "evdev", version = "2.0.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11' and 'linux' in sys_platform" },
-    { name = "pyobjc-framework-applicationservices", version = "12.2.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11' and sys_platform == 'darwin'" },
-    { name = "pyobjc-framework-applicationservices", version = "13.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11' and sys_platform == 'darwin'" },
-    { name = "pyobjc-framework-quartz", version = "12.2.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11' and sys_platform == 'darwin'" },
-    { name = "pyobjc-framework-quartz", version = "13.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11' and sys_platform == 'darwin'" },
+    { name = "evdev", version = "1.9.3", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and 'linux' in sys_platform and extra == 'extra-5-myvla-sim') or (python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or ('linux' not in sys_platform and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "evdev", version = "2.0.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and 'linux' in sys_platform and extra == 'extra-5-myvla-sim') or (python_full_version < '3.11' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or ('linux' not in sys_platform and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "pyobjc-framework-applicationservices", version = "12.2.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and sys_platform == 'darwin' and extra == 'extra-5-myvla-sim') or (python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'darwin' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "pyobjc-framework-applicationservices", version = "13.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and sys_platform == 'darwin' and extra == 'extra-5-myvla-sim') or (python_full_version < '3.11' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'darwin' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "pyobjc-framework-quartz", version = "12.2.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and sys_platform == 'darwin' and extra == 'extra-5-myvla-sim') or (python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'darwin' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "pyobjc-framework-quartz", version = "13.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and sys_platform == 'darwin' and extra == 'extra-5-myvla-sim') or (python_full_version < '3.11' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'darwin' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "python-xlib", marker = "'linux' in sys_platform" },
     { name = "six" },
 ]
@@ -1424,13 +1628,13 @@ name = "pytest"
 version = "8.4.2"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
-    { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "exceptiongroup", marker = "python_full_version < '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
     { name = "pygments" },
-    { name = "tomli", marker = "python_full_version < '3.11'" },
+    { name = "tomli", marker = "python_full_version < '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/a3/5c/00a0e072241553e1a7496d638deababa67c5058571567b92a7eaa258397c/pytest-8.4.2.tar.gz", hash = "sha256:86c0d0b93306b961d58d62a4db4879f27fe25513d4b969df351abdddb3c30e01" }
 wheels = [
@@ -1494,8 +1698,8 @@ version = "0.37.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "attrs" },
-    { name = "rpds-py", version = "0.30.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "rpds-py", version = "2026.9.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "rpds-py", version = "0.30.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "rpds-py", version = "2026.9.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/22/f5/df4e9027acead3ecc63e50fe1e36aca1523e1719559c499951bb4b53188f/referencing-0.37.0.tar.gz", hash = "sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8" }
@@ -1564,14 +1768,14 @@ name = "robosuite"
 version = "1.4.1"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "mujoco" },
+    { name = "mujoco", version = "2.3.7", source = { registry = "https://mirrors.aliyun.com/pypi/simple" } },
     { name = "numba" },
     { name = "numpy" },
     { name = "opencv-python" },
     { name = "pillow" },
     { name = "pynput" },
-    { name = "scipy", version = "1.15.3", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "scipy", version = "1.15.3", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "termcolor" },
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/be/82/50fd8fa786e1bbd27d7de7ae9b8c6ca8a36df791c351bee20ef4cbf27687/robosuite-1.4.1.tar.gz", hash = "sha256:e209b0f7821bb84b2bf3763aeb64fa942ad9d58a1519eebfb39fbb68231ebb42" }
@@ -1727,9 +1931,10 @@ name = "scipy"
 version = "1.15.3"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 resolution-markers = [
-    "python_full_version < '3.11' and sys_platform == 'darwin'",
-    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "python_full_version < '3.11' and sys_platform == 'darwin' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')",
+    "python_full_version < '3.11' and extra == 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
 ]
 dependencies = [
     { name = "numpy", marker = "python_full_version < '3.11'" },
@@ -1761,9 +1966,10 @@ name = "scipy"
 version = "1.17.1"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 resolution-markers = [
-    "python_full_version >= '3.11' and sys_platform == 'darwin'",
-    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
+    "python_full_version >= '3.11' and sys_platform == 'darwin' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "python_full_version >= '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim'",
+    "(python_full_version >= '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (python_full_version >= '3.11' and sys_platform != 'darwin' and sys_platform != 'linux' and extra != 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')",
+    "python_full_version >= '3.11' and extra == 'extra-5-myvla-mt50' and extra != 'extra-5-myvla-sim'",
 ]
 dependencies = [
     { name = "numpy", marker = "python_full_version >= '3.11'" },
@@ -1865,27 +2071,27 @@ name = "torch"
 version = "2.6.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "filelock", version = "4.1.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "filelock", version = "4.2.6", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "filelock", version = "4.1.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "filelock", version = "4.2.6", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "fsspec" },
     { name = "jinja2" },
-    { name = "networkx", version = "3.4.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "networkx", version = "3.6.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "nvidia-cublas-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-cupti-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-nvrtc-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cuda-runtime-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cudnn-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cufft-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-curand-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusolver-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusparse-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-cusparselt-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nccl-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nvjitlink-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "nvidia-nvtx-cu12", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "networkx", version = "3.4.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "networkx", version = "3.6.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-cudnn-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-cufft-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-curand-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-cusolver-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-cusparse-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-cusparselt-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-nccl-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "sympy" },
-    { name = "triton", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim') or (sys_platform != 'linux' and extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "typing-extensions" },
 ]
 wheels = [
@@ -1904,7 +2110,7 @@ name = "tqdm"
 version = "4.70.1"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
 ]
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/0d/ea/b2a5bd54b28a324dae8211928b2d730b6547500342c7e6c6dea08bd0a485/tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4" }
 wheels = [
@@ -1925,8 +2131,8 @@ name = "transformers"
 version = "4.57.6"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
-    { name = "filelock", version = "4.1.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "filelock", version = "4.2.6", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "filelock", version = "4.1.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
+    { name = "filelock", version = "4.2.6", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "packaging" },
@@ -1976,4 +2182,13 @@ source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/e3/05/b17359e1cefb4f909b5e40b1b90a496d987258916dbbf88e842c729f510e/urllib3-2.8.0.tar.gz", hash = "sha256:63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63" }
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl", hash = "sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3" },
+]
+
+[[package]]
+name = "zipp"
+version = "4.1.2"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/18/05/ba1458dee0ac485b2a01071c1b88f5199fe878a485df482e10e1ef2205cc/zipp-4.1.2.tar.gz", hash = "sha256:cf474b90b07ea932637e17c6b9479de2b2882900b0d311bdaf4f5c000a15a97f" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/b8/44/7bd2007260da11cccca29ba2d4c345f1287aa663db38ee7cefeabf6386a5/zipp-4.1.2-py3-none-any.whl", hash = "sha256:b30cb6cd253122169c47de245ca24a86bac2a5d3802ba15bf7ba6414eb9e144d" },
 ]

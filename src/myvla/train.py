@@ -11,7 +11,7 @@ import yaml
 from torch.utils.data import DataLoader, Sampler
 
 from .config import from_dict
-from .data import LiberoDataset, compute_stats, manifest, scan_episodes
+from .data import RobotDataset, compute_stats, manifest, scan_episodes
 from .model import Policy, action_loss
 from .preprocess import augment_images
 
@@ -173,7 +173,11 @@ def train(config, resume=None, init_checkpoint=None):
         adding_fusion = old.model.fusion_layers == 0 and config.model.fusion_layers > 0
         if adding_fusion:
             old.model.fusion_layers = config.model.fusion_layers
-        if old.model != config.model or initial["manifest"] != manifest(episodes):
+        if (
+            old.model != config.model
+            or old.data != config.data
+            or initial["manifest"] != manifest(episodes)
+        ):
             raise ValueError("Initialization requires the same model and dataset split")
     if saved:
         old = from_dict(saved["config"])
@@ -187,10 +191,10 @@ def train(config, resume=None, init_checkpoint=None):
     stats = (
         {k: np.asarray(v, np.float32) for k, v in saved["stats"].items()}
         if saved
-        else compute_stats(episodes)
+        else compute_stats(episodes, config.data.dataset)
     )
     datasets = {
-        s: LiberoDataset(episodes, s, config.data, config.model, stats) for s in ("train", "val")
+        s: RobotDataset(episodes, s, config.data, config.model, stats) for s in ("train", "val")
     }
     policy = Policy(config.model).to(device)
     if initial:
@@ -205,12 +209,17 @@ def train(config, resume=None, init_checkpoint=None):
             raise ValueError("Unexpected keys when initializing fusion")
         if config.model.backend == "tiny":
             policy.backbone.load_state_dict(initial["tiny_backbone"], strict=True)
-        (out / "initialization.json").write_text(json.dumps({
-            "checkpoint": str(Path(init_checkpoint).resolve()),
-            "checkpoint_step": initial["step"],
-            "optimizer_reset": True,
-            "added_fusion_layers": config.model.fusion_layers if adding_fusion else 0,
-        }, indent=2))
+        (out / "initialization.json").write_text(
+            json.dumps(
+                {
+                    "checkpoint": str(Path(init_checkpoint).resolve()),
+                    "checkpoint_step": initial["step"],
+                    "optimizer_reset": True,
+                    "added_fusion_layers": config.model.fusion_layers if adding_fusion else 0,
+                },
+                indent=2,
+            )
+        )
     optimizer = torch.optim.AdamW(policy.head.parameters(), lr=t.lr, weight_decay=t.weight_decay)
 
     def lr_scale(step):

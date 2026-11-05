@@ -37,7 +37,9 @@ def read_language(f):
     return language.strip()
 
 
-def raw_state(obs, index):
+def raw_state(obs, index, dataset="libero"):
+    if dataset == "metaworld":
+        return obs["state"][index].astype(np.float32)
     if "ee_states" in obs:
         ee = obs["ee_states"][index]
     else:
@@ -53,6 +55,10 @@ def scan_episodes(config, seed):
     for path in files:
         stat = path.stat()
         with h5py.File(path, "r") as f:
+            meta = config.dataset == "metaworld"
+            if meta:
+                if f.attrs.get("dataset") != "metaworld_mt50":
+                    raise ValueError(f"{path}: not a converted MT50 HDF5 file")
             language = read_language(f)
             demos = sorted(f["data"], key=lambda s: int(s.split("_")[-1]))
             if len(demos) < 2:
@@ -65,20 +71,27 @@ def scan_episodes(config, seed):
             for demo in demos:
                 group = f[f"data/{demo}"]
                 n = len(group["actions"])
-                if n < 1 or group["actions"].shape != (n, 7):
-                    raise ValueError(f"{path}/{demo}: actions must have shape (T,7)")
+                action_dim = 4 if meta else 7
+                if n < 1 or group["actions"].shape != (n, action_dim):
+                    raise ValueError(f"{path}/{demo}: actions must have shape (T,{action_dim})")
                 obs = group["obs"]
-                for key in ("agentview_rgb", "eye_in_hand_rgb", "gripper_states"):
+                image_keys = ("rgb",) if meta else ("agentview_rgb", "eye_in_hand_rgb")
+                for key in image_keys + (("state",) if meta else ("gripper_states",)):
                     if len(obs[key]) != n:
                         raise ValueError(f"{path}/{demo}: {key} length mismatch")
-                for key in ("agentview_rgb", "eye_in_hand_rgb"):
+                for key in image_keys:
                     if obs[key].ndim != 4 or obs[key].shape[-1] != 3:
                         raise ValueError(f"{path}/{demo}: invalid RGB schema for {key}")
                     if obs[key].dtype != np.uint8:
                         raise ValueError(f"{path}/{demo}: images must be uint8")
-                state_length = len(obs["ee_states"] if "ee_states" in obs else obs["ee_pos"])
-                if state_length != n or raw_state(obs, 0).shape != (8,):
-                    raise ValueError(f"{path}/{demo}: expected 8D state aligned with actions")
+                state_key = "state" if meta else "ee_states" if "ee_states" in obs else "ee_pos"
+                state_dim = 4 if meta else 8
+                if len(obs[state_key]) != n or raw_state(obs, 0, config.dataset).shape != (
+                    state_dim,
+                ):
+                    raise ValueError(
+                        f"{path}/{demo}: expected {state_dim}D state aligned with actions"
+                    )
                 episodes.append(
                     Episode(
                         str(path.resolve()),
@@ -93,10 +106,12 @@ def scan_episodes(config, seed):
     return episodes
 
 
-def compute_stats(episodes):
+def compute_stats(episodes, dataset="libero"):
     """Streaming sums over training trajectories only; no image caching."""
     total = 0
-    sums, squares = np.zeros(14, np.float64), np.zeros(14, np.float64)
+    state_dim, continuous_dim = (4, 4) if dataset == "metaworld" else (8, 6)
+    sums = np.zeros(state_dim + continuous_dim, np.float64)
+    squares = np.zeros_like(sums)
     for episode in episodes:
         if episode.split != "train":
             continue
@@ -105,12 +120,12 @@ def compute_stats(episodes):
             for start in range(0, episode.length, 4096):
                 sl = slice(start, start + 4096)
                 actions = group["actions"][sl].astype(np.float64)
-                state = raw_state(group["obs"], sl).astype(np.float64)
-                values = np.concatenate([state, actions[:, :6]], axis=-1)
+                state = raw_state(group["obs"], sl, dataset).astype(np.float64)
+                values = np.concatenate([state, actions[:, :continuous_dim]], axis=-1)
                 if not np.isfinite(values).all() or not np.isfinite(actions).all():
                     raise ValueError(f"Non-finite state/action: {episode.path}/{episode.demo}")
                 if np.abs(actions).max() > 1.0001:
-                    raise ValueError("Expected relative LIBERO actions within [-1,1]")
+                    raise ValueError(f"Expected {dataset} actions within [-1,1]")
                 total += len(values)
                 sums += values.sum(0)
                 squares += np.square(values).sum(0)
@@ -119,10 +134,10 @@ def compute_stats(episodes):
     mean = sums / total
     std = np.sqrt(np.maximum(squares / total - mean**2, 0)).clip(1e-3)
     return {
-        "state_mean": mean[:8].astype(np.float32),
-        "state_std": std[:8].astype(np.float32),
-        "action_mean": mean[8:].astype(np.float32),
-        "action_std": std[8:].astype(np.float32),
+        "state_mean": mean[:state_dim].astype(np.float32),
+        "state_std": std[:state_dim].astype(np.float32),
+        "action_mean": mean[state_dim:].astype(np.float32),
+        "action_std": std[state_dim:].astype(np.float32),
     }
 
 
@@ -130,7 +145,7 @@ def manifest(episodes):
     return [asdict(e) for e in episodes]
 
 
-class LiberoDataset(Dataset):
+class RobotDataset(Dataset):
     def __init__(self, episodes, split, config, model_config, stats):
         self.episodes = [e for e in episodes if e.split == split]
         self.ends = np.cumsum([e.length for e in self.episodes]).tolist()
@@ -158,11 +173,15 @@ class LiberoDataset(Dataset):
                     prepare_image(
                         obs[key][t], self.model_config.image_size, self.config.flip_vertical
                     )
-                    for key in ("agentview_rgb", "eye_in_hand_rgb")
+                    for key in (
+                        ("rgb",)
+                        if self.config.dataset == "metaworld"
+                        else ("agentview_rgb", "eye_in_hand_rgb")
+                    )
                 ]
             )
-            state = normalize_state(raw_state(obs, t), self.stats)
-            actions = np.zeros((k, 7), np.float32)
+            state = normalize_state(raw_state(obs, t, self.config.dataset), self.stats)
+            actions = np.zeros((k, self.model_config.action_dim), np.float32)
             actions[:valid] = normalize_actions(group["actions"][t : t + valid], self.stats)
         return {
             "images": images,
@@ -171,3 +190,7 @@ class LiberoDataset(Dataset):
             "mask": torch.arange(k) < valid,
             "language": ep.language,
         }
+
+
+# Keep the original public name for existing scripts and checkpoints' companion tooling.
+LiberoDataset = RobotDataset

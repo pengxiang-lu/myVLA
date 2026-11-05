@@ -166,10 +166,30 @@ def main():
     p.add_argument("--gl", choices=["egl", "osmesa"], default="egl")
     p = commands.add_parser("smoke", help="Offline CPU end-to-end check with synthetic HDF5")
     p.add_argument("--output", default="runs/smoke")
-    p = commands.add_parser("inspect", help="Validate official LIBERO HDF5 schema and split")
+    p = commands.add_parser("inspect", help="Validate LIBERO or converted MT50 HDF5 and split")
     p.add_argument("--data-dir", required=True)
     p.add_argument("--pattern", default="*_demo.hdf5")
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--dataset", choices=["libero", "metaworld"], default="libero")
+    p = commands.add_parser(
+        "convert-metaworld", help="Import official LeRobot MT50 parquet to HDF5"
+    )
+    p.add_argument("--source", required=True)
+    p.add_argument("--output", required=True)
+    p.add_argument("--tasks", type=int, nargs="+")
+    p.add_argument("--max-episodes", type=int)
+    p.add_argument("--image-size", type=int, default=224)
+    p = commands.add_parser("eval-metaworld", help="Closed-loop MetaWorld MT50 evaluation")
+    p.add_argument("--checkpoint", required=True)
+    p.add_argument("--output", required=True)
+    p.add_argument("--tasks", type=int, nargs="+")
+    p.add_argument("--episodes", type=int, default=50)
+    p.add_argument("--device", default="cuda")
+    p.add_argument("--execute-steps", type=int, default=1)
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--horizon", type=int, default=500)
+    p.add_argument("--protocol", choices=["lerobot", "benchmark"], default="lerobot")
+    p.add_argument("--videos", action="store_true")
     p = commands.add_parser("train")
     p.add_argument("--config")
     p.add_argument("--resume")
@@ -194,11 +214,11 @@ def main():
     p.add_argument("--horizon", type=int)
     p.add_argument("--videos", action="store_true")
     p.add_argument("--libero-root")
-    p = commands.add_parser("download", help="Download a LIBERO suite from official HF source")
+    p = commands.add_parser("download", help="Download LIBERO or raw MT50 from official HF source")
     p.add_argument(
         "--suite",
         default="libero_spatial",
-        choices=["libero_spatial", "libero_object", "libero_goal", "libero_100"],
+        choices=["libero_spatial", "libero_object", "libero_goal", "libero_100", "metaworld_mt50"],
     )
     p.add_argument("--directory", default="data")
     p.add_argument("--libero-root")
@@ -213,9 +233,15 @@ def main():
         smoke(args.output)
     elif args.command == "inspect":
         episodes = scan_episodes(
-            DataConfig(directory=args.data_dir, pattern=args.pattern), args.seed
+            DataConfig(
+                directory=args.data_dir,
+                pattern=args.pattern,
+                dataset=args.dataset,
+                flip_vertical=args.dataset == "libero",
+            ),
+            args.seed,
         )
-        stats = compute_stats(episodes)
+        stats = compute_stats(episodes, args.dataset)
         print(
             json.dumps(
                 {
@@ -224,6 +250,28 @@ def main():
                 },
                 indent=2,
             )
+        )
+    elif args.command == "convert-metaworld":
+        from .metaworld_data import convert_metaworld
+
+        report = convert_metaworld(
+            args.source, args.output, args.tasks, args.max_episodes, args.image_size
+        )
+        print(json.dumps(report, indent=2))
+    elif args.command == "eval-metaworld":
+        from .metaworld_evaluate import evaluate_metaworld
+
+        evaluate_metaworld(
+            args.checkpoint,
+            args.output,
+            args.tasks,
+            args.episodes,
+            args.device,
+            args.execute_steps,
+            args.seed,
+            args.horizon,
+            args.protocol,
+            args.videos,
         )
     elif args.command == "train":
         if args.config:
@@ -258,6 +306,17 @@ def main():
 
         if args.max_workers < 1:
             parser.error("--max-workers must be positive")
+        if args.suite == "metaworld_mt50":
+            snapshot_download(
+                repo_id="lerobot/metaworld_mt50",
+                repo_type="dataset",
+                local_dir=str((Path(args.directory) / "metaworld_mt50_raw").resolve()),
+                allow_patterns=["meta/**", "data/**"],
+                force_download=False,
+                max_workers=args.max_workers,
+                endpoint=args.endpoint,
+            )
+            return
         # Download directly: upstream deletes existing data and forces re-downloads.
         # Keep local_dir metadata and partial files so interrupted runs can resume.
         Path(args.directory).mkdir(parents=True, exist_ok=True)
