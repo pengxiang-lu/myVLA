@@ -1,0 +1,34 @@
+model:
+  backbone: /home/lpx/python-project/myVLA/models/clip-vit-base-patch16
+  revision: 57c216476eefef5ab752ec549e440a49ae4ae5f3
+  backend: clip
+  image_size: 224
+  hidden_dim: 256
+  layers: 4
+  heads: 8
+  chunk_size: 8
+  dropout: 0.1
+data:
+  directory: data/libero_spatial
+  pattern: '*_demo.hdf5'
+  val_fraction: 0.1
+  flip_vertical: true
+train:
+  output_dir: runs/spatial_aug_v2
+  device: cuda
+  precision: fp16
+  batch_size: 4
+  grad_accumulation: 4
+  workers: 2
+  steps: 3000
+  lr: 3.0e-05
+  weight_decay: 0.001
+  warmup_steps: 100
+  grad_clip: 1.0
+  validate_every: 500
+  validation_batches: 50
+  save_every: 500
+  log_every: 20
+  seed: 42
+  image_shift: 4
+  color_jitter: 0.1
