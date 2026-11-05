@@ -32,7 +32,7 @@ class DataConfig:
 
 @dataclass
 class TrainConfig:
-    output_dir: str = "runs/spatial_v1"
+    output_dir: str = "outputs/train/libero_spatial_v1"
     device: str = "cuda"
     precision: str = "fp16"
     batch_size: int = 2
@@ -82,7 +82,7 @@ class Config:
                 pattern="*_demo.hdf5",
                 flip_vertical=not meta,
             ),
-            train=replace(self.train, output_dir=f"runs/{suite}_{model_version}"),
+            train=replace(self.train, output_dir=f"outputs/train/{suite}_{model_version}"),
         ).validate()
 
     def validate(self):

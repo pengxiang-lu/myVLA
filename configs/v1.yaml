@@ -21,7 +21,7 @@ data:
   flip_vertical: true
   dataset: libero
 train:
-  output_dir: runs/libero_spatial_v1
+  output_dir: outputs/train/libero_spatial_v1
   device: cuda
   precision: fp16
   batch_size: 4

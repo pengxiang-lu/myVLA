@@ -8,9 +8,9 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .config import Config, DataConfig, ModelConfig, TrainConfig, from_dict, load_config
+from .config import Config, DataConfig, ModelConfig, TrainConfig
 from .data import compute_stats, manifest, scan_episodes
-from .train import load_checkpoint, policy_from_checkpoint, train
+from .train import add_train_arguments, policy_from_checkpoint, run_training, train
 
 
 def doctor():
@@ -155,43 +155,7 @@ def sim_smoke(libero_root, gl):
         env.close()
 
 
-def add_train_arguments(parser):
-    parser.add_argument("--config")
-    parser.add_argument(
-        "--dataset",
-        choices=["libero", "metaworld"],
-        help="Select dataset IO defaults; defaults to the YAML/checkpoint setting",
-    )
-    parser.add_argument("--data-dir", help="Override the training dataset directory")
-    parser.add_argument("--resume")
-    parser.add_argument("--init-checkpoint", help="Initialize weights for a new fine-tuning run")
-    parser.add_argument("--device")
-    parser.add_argument("--steps", type=int)
-    parser.add_argument("--workers", type=int)
-    parser.add_argument("--output-dir")
-
-
-def run_training(args, parser):
-    if args.config:
-        config = load_config(args.config)
-    elif args.resume:
-        config = from_dict(load_checkpoint(args.resume)["config"])
-    else:
-        parser.error("train requires --config or --resume")
-    if args.dataset:
-        if args.resume and args.dataset != config.data.dataset:
-            parser.error("Cannot switch dataset when resuming a checkpoint")
-        config = config.for_dataset(args.dataset)
-    if args.data_dir is not None:
-        config.data.directory = args.data_dir
-    for name in ("device", "steps", "workers", "output_dir"):
-        value = getattr(args, name)
-        if value is not None:
-            setattr(config.train, name, value)
-    train(config, resume=args.resume, init_checkpoint=args.init_checkpoint)
-
-
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description="myVLA: frozen CLIP + action-chunk Transformer")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="Inspect Python/PyTorch/CUDA without changing drivers")
@@ -201,7 +165,7 @@ def main():
     p.add_argument("--libero-root")
     p.add_argument("--gl", choices=["egl", "osmesa"], default="egl")
     p = commands.add_parser("smoke", help="Offline CPU end-to-end check with synthetic HDF5")
-    p.add_argument("--output", default="runs/smoke")
+    p.add_argument("--output", default="outputs/train/smoke")
     p = commands.add_parser("inspect", help="Validate LIBERO or converted MT50 HDF5 and split")
     p.add_argument("--data-dir", required=True)
     p.add_argument("--pattern", default="*_demo.hdf5")
@@ -217,7 +181,7 @@ def main():
     p.add_argument("--image-size", type=int, default=224)
     p = commands.add_parser("eval-metaworld", help="Closed-loop MetaWorld MT50 evaluation")
     p.add_argument("--checkpoint", required=True)
-    p.add_argument("--output", required=True)
+    p.add_argument("--output-dir", required=True)
     p.add_argument("--tasks", type=int, nargs="+")
     p.add_argument("--episodes", type=int, default=50)
     p.add_argument("--device", default="cuda")
@@ -239,7 +203,7 @@ def main():
     p.add_argument("--episodes", type=int, default=10)
     p.add_argument("--device", default="cuda")
     p.add_argument("--execute-steps", type=int, default=4)
-    p.add_argument("--output", required=True)
+    p.add_argument("--output-dir", required=True)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--horizon", type=int)
     p.add_argument("--videos", action="store_true")
@@ -254,7 +218,7 @@ def main():
     p.add_argument("--libero-root")
     p.add_argument("--endpoint", help="Hugging Face endpoint or compatible mirror URL")
     p.add_argument("--max-workers", type=int, default=2)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.command == "doctor":
         doctor()
     elif args.command == "sim-smoke":
@@ -293,7 +257,7 @@ def main():
 
         evaluate_metaworld(
             args.checkpoint,
-            args.output,
+            args.output_dir,
             args.tasks,
             args.episodes,
             args.device,
@@ -304,7 +268,7 @@ def main():
             args.videos,
         )
     elif args.command == "train":
-        run_training(args, parser)
+        run_training(args, parser, trainer=train)
     elif args.command == "eval":
         from .evaluate import evaluate
 
@@ -315,7 +279,7 @@ def main():
             args.episodes,
             args.device,
             args.execute_steps,
-            args.output,
+            args.output_dir,
             args.seed,
             args.horizon,
             args.videos,

@@ -1,16 +1,24 @@
+import argparse
 import json
 import math
+import os
 import random
+import sys
 import time
 from contextlib import nullcontext
 from pathlib import Path
+
+# Support both package imports and `uv run src/myvla/train.py`.
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    __package__ = "myvla"
 
 import numpy as np
 import torch
 import yaml
 from torch.utils.data import DataLoader, Sampler
 
-from .config import from_dict
+from .config import from_dict, load_config
 from .data import RobotDataset, compute_stats, manifest, scan_episodes
 from .model import Policy, action_loss
 from .preprocess import augment_images
@@ -358,3 +366,60 @@ def train(config, resume=None, init_checkpoint=None):
                     best,
                 )
     return out / "latest.pt"
+
+
+def add_train_arguments(parser):
+    parser.add_argument("--config")
+    parser.add_argument(
+        "--dataset",
+        choices=["libero", "metaworld"],
+        help="Select dataset IO defaults; defaults to the YAML/checkpoint setting",
+    )
+    parser.add_argument("--data-dir", help="Override the training dataset directory")
+    parser.add_argument("--resume")
+    parser.add_argument("--init-checkpoint", help="Initialize weights for a new fine-tuning run")
+    parser.add_argument("--device")
+    parser.add_argument("--steps", type=int)
+    parser.add_argument("--workers", type=int)
+    parser.add_argument("--output-dir")
+
+
+def run_training(args, parser, trainer=None):
+    if args.config:
+        config = load_config(args.config)
+    elif args.resume:
+        config = from_dict(load_checkpoint(args.resume)["config"])
+        # Keep relocated runs in their current directory rather than the saved old path.
+        config.train.output_dir = str(Path(args.resume).parent)
+    else:
+        parser.error("train requires --config or --resume")
+    if args.dataset:
+        if args.resume and args.dataset != config.data.dataset:
+            parser.error("Cannot switch dataset when resuming a checkpoint")
+        config = config.for_dataset(args.dataset)
+    if args.data_dir is not None:
+        config.data.directory = args.data_dir
+    for name in ("device", "steps", "workers", "output_dir"):
+        value = getattr(args, name)
+        if value is not None:
+            setattr(config.train, name, value)
+    trainer = train if trainer is None else trainer
+    return trainer(config, resume=args.resume, init_checkpoint=args.init_checkpoint)
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Train V1 or V2 on LIBERO or MetaWorld MT50.",
+        epilog="Relative config, data, model and output paths use the project root.",
+    )
+    add_train_arguments(parser)
+    args = parser.parse_args(argv)
+    os.chdir(PROJECT_ROOT)
+    return run_training(args, parser)
+
+
+if __name__ == "__main__":
+    main()

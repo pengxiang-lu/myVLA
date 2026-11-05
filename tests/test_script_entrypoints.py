@@ -1,25 +1,38 @@
-import importlib.util
+import importlib
 from pathlib import Path
 
 import pytest
 
-from myvla import cli, metaworld_evaluate
 from myvla import evaluate as libero_evaluation
+from myvla import metaworld_evaluate
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_script(name):
-    spec = importlib.util.spec_from_file_location(f"script_{name}", ROOT / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return importlib.import_module(f"myvla.{name}")
+
+
+@pytest.mark.parametrize("override", [None, "outputs/train/continued"])
+def test_resume_uses_relocated_checkpoint_directory(monkeypatch, tmp_path, override):
+    script = load_script("train")
+    config = script.load_config(ROOT / "configs/v1.yaml").to_dict()
+    config["train"]["output_dir"] = "runs/old_location"
+    monkeypatch.setattr(script, "load_checkpoint", lambda _: {"config": config})
+    captured = []
+    monkeypatch.setattr(script, "train", lambda config, **kw: captured.append(config))
+    monkeypatch.chdir(tmp_path)
+    args = ["--resume", "outputs/train/libero_spatial_v1/latest.pt"]
+    if override is not None:
+        args.extend(["--output-dir", override])
+    script.main(args)
+    assert captured[0].train.output_dir == (override or "outputs/train/libero_spatial_v1")
 
 
 def test_train_script_from_another_directory(monkeypatch, tmp_path):
     script = load_script("train")
     captured = []
-    monkeypatch.setattr(cli, "train", lambda config, **kw: captured.append(config.validate()))
+    monkeypatch.setattr(script, "train", lambda config, **kw: captured.append(config.validate()))
     monkeypatch.chdir(tmp_path)
     script.main(
         [
@@ -32,7 +45,7 @@ def test_train_script_from_another_directory(monkeypatch, tmp_path):
             "--data-dir",
             "data/custom_mt50",
             "--output-dir",
-            "runs/custom_mt50",
+            "outputs/train/custom_mt50",
         ]
     )
     config = captured[0]
@@ -41,7 +54,7 @@ def test_train_script_from_another_directory(monkeypatch, tmp_path):
     assert config.data.dataset == "metaworld"
     assert config.data.directory == "data/custom_mt50"
     assert config.train.steps == 7
-    assert config.train.output_dir == "runs/custom_mt50"
+    assert config.train.output_dir == "outputs/train/custom_mt50"
 
 
 @pytest.mark.parametrize(
@@ -71,7 +84,9 @@ def test_evaluation_script_selects_checkpoint_dataset(
     )
     monkeypatch.setattr(target, name, lambda **kw: captured.append(kw))
     monkeypatch.chdir(tmp_path)
-    script.main(["--checkpoint", "runs/check/best.pt", "--output", "runs/check/eval"])
+    script.main(
+        ["--checkpoint", "outputs/train/check/best.pt", "--output-dir", "outputs/eval/check"]
+    )
     args = captured[0]
     assert Path.cwd() == ROOT
     assert args["episodes"] == episodes
@@ -95,7 +110,7 @@ def test_evaluation_script_preserves_explicit_options(monkeypatch, tmp_path):
         [
             "--checkpoint",
             "best.pt",
-            "--output",
+            "--output-dir",
             "eval",
             "--dataset",
             "metaworld",
@@ -138,5 +153,5 @@ def test_evaluation_script_rejects_wrong_dataset_options(monkeypatch, tmp_path, 
     )
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit) as exc:
-        script.main(["--checkpoint", "best.pt", "--output", "eval", *options])
+        script.main(["--checkpoint", "best.pt", "--output-dir", "eval", *options])
     assert exc.value.code == 2
