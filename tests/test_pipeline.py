@@ -158,9 +158,13 @@ def test_action_roundtrip_and_online_state():
 
 
 @pytest.mark.parametrize("augmentation", [False, True])
-def test_resume_matches_uninterrupted_training(config, monkeypatch, tmp_path, augmentation):
+@pytest.mark.parametrize("fusion_layers", [0, 2])
+def test_resume_matches_uninterrupted_training(
+    config, monkeypatch, tmp_path, augmentation, fusion_layers
+):
     import myvla.train as training
 
+    config.model.fusion_layers = fusion_layers
     if augmentation:
         config.train.image_shift = 2
         config.train.color_jitter = 0.1
@@ -277,3 +281,42 @@ def test_controller_replans_and_clears_episode_queue(config):
             return self.steps >= 12
 
     assert run_episode(FakeEnv(), controller, "bowl", None, 10) == (True, 2)
+
+
+def test_fusion_preserves_initial_policy_and_masks_padding(config):
+    from myvla.model import VisionLanguageFusion
+
+    baseline = Policy(config.model).eval()
+    config.model.fusion_layers = 2
+    fused = Policy(config.model).eval()
+    fused.backbone.load_state_dict(baseline.backbone.state_dict())
+    fused.head.load_state_dict(baseline.head.state_dict(), strict=False)
+    images, state = torch.randn(2, 2, 3, 32, 32), torch.randn(2, 8)
+    languages = ["red bowl", "black bowl"]
+    torch.testing.assert_close(baseline(images, state, languages), fused(images, state, languages))
+    layer = VisionLanguageFusion(32, 4, 0)
+    layer.gates.data.fill_(0.2)
+    visual, text = torch.randn(2, 5, 32), torch.randn(2, 4, 32)
+    padding = torch.tensor([[False, False, True, True], [False, False, False, True]])
+    v, t = layer(visual, text, padding)
+    poisoned = text.clone()
+    poisoned[padding] = 1000
+    v2, t2 = layer(visual, poisoned, padding)
+    torch.testing.assert_close(v, v2)
+    torch.testing.assert_close(t[~padding], t2[~padding])
+    (v.square().mean() + t[~padding].square().mean()).backward()
+    for attention in (layer.visual_attention, layer.text_attention):
+        assert attention.in_proj_weight.grad.abs().sum() > 0
+    fused(images, state, languages).square().mean().backward()
+    assert all(p.grad is None for p in fused.backbone.parameters())
+    assert fused.head.fusion[0].gates.grad.abs().sum() > 0
+
+
+def test_fusion_initialization_and_checkpoint_reload(config, tmp_path):
+    initial = train(config)
+    config.model.fusion_layers = 2
+    config.train.output_dir = str(tmp_path / "fusion")
+    checkpoint = train(config, init_checkpoint=initial)
+    policy, saved_config, _, _ = policy_from_checkpoint(checkpoint, torch.device("cpu"))
+    assert saved_config.model.fusion_layers == 2
+    assert policy.head.fusion[0].gates.abs().sum() > 0

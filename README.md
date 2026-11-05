@@ -250,3 +250,21 @@ scripts/profile_cuda.py     不下载权重的完整尺寸 CUDA/AMP 显存探测
 
 参考：[LIBERO 官方仓库](https://github.com/Lifelong-Robot-Learning/LIBERO)、
 [CLIP ViT-B/16](https://huggingface.co/openai/clip-vit-base-patch16)。
+
+### 双向视觉—语言融合实验
+
+`model.fusion_layers` 默认为 0，兼容已有 checkpoint。设置为 2 时，保留 CLIP
+逐 token 文本特征，在动作解码前加入双向交叉注意力、FFN 和可训练残差门控。
+CLIP 仍冻结；融合层与动作头一起训练。文本 padding 不参与视觉对语言的注意力。
+门控从零开始，便于从原策略平滑初始化；这不是 TurboVLA 的完整复现。
+
+```bash
+HF_HUB_OFFLINE=1 uv run --locked myvla train \
+  --config configs/libero_spatial_fusion.yaml \
+  --init-checkpoint runs/spatial_aug_v2/best.pt
+```
+
+`--init-checkpoint` 允许从 `fusion_layers=0` 扩展到融合模型，其余架构、数据划分和
+归一化必须一致；只允许融合模块缺少权重，重置优化器。`--resume` 仍要求架构一致。
+`configs/libero_spatial_fusion_control.yaml` 为相同步数、学习率和数据增强的无融合对照。
+实验结果使用独立目录，不覆盖已有的 `spatial_aug_v2`。

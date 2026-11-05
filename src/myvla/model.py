@@ -10,6 +10,7 @@ class FrozenCLIP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.backend = config.backend
+        self.use_tokens = config.fusion_layers > 0
         if self.backend == "tiny":
             # A real, randomly initialized miniature CLIP for offline CPU tests only.
             clip_config = CLIPConfig(
@@ -62,7 +63,7 @@ class FrozenCLIP(nn.Module):
         # Drop CLS; each patch already carries CLIP spatial position information.
         vision = vision[:, 1:].reshape(batch, cameras, -1, self.vision_dim)
         device = images.device
-        texts = []
+        texts, tokens = [], []
         for language in languages:
             if language not in self.text_cache:
                 if self.tokenizer is None:
@@ -73,10 +74,53 @@ class FrozenCLIP(nn.Module):
                     inputs = self.tokenizer(
                         language, return_tensors="pt", truncation=True, max_length=77
                     ).to(device)
-                text = self.clip.text_model(**inputs).pooler_output[0]
-                self.text_cache[language] = text.float().cpu()
-            texts.append(self.text_cache[language])
-        return vision.float(), torch.stack(texts).to(device)
+                encoded = self.clip.text_model(**inputs)
+                self.text_cache[language] = (
+                    encoded.pooler_output[0].float().cpu(),
+                    encoded.last_hidden_state[0].float().cpu() if self.use_tokens else None,
+                )
+            pooled, sequence = self.text_cache[language]
+            texts.append(pooled)
+            if self.use_tokens:
+                tokens.append(sequence)
+        pooled = torch.stack(texts).to(device)
+        if not self.use_tokens:
+            return vision.float(), pooled
+        lengths = torch.tensor([len(t) for t in tokens], device=device)
+        tokens = nn.utils.rnn.pad_sequence(tokens, batch_first=True).to(device)
+        padding = torch.arange(tokens.shape[1], device=device)[None] >= lengths[:, None]
+        return vision.float(), pooled, tokens, padding
+
+
+class VisionLanguageFusion(nn.Module):
+    """Bidirectional token interaction with zero-gated residual initialization."""
+
+    def __init__(self, d, heads, dropout):
+        super().__init__()
+        self.visual_norm = nn.LayerNorm(d)
+        self.text_norm = nn.LayerNorm(d)
+        self.visual_attention = nn.MultiheadAttention(d, heads, dropout, batch_first=True)
+        self.text_attention = nn.MultiheadAttention(d, heads, dropout, batch_first=True)
+        self.visual_ffn = nn.Sequential(
+            nn.LayerNorm(d), nn.Linear(d, 4 * d), nn.GELU(),
+            nn.Dropout(dropout), nn.Linear(4 * d, d),
+        )
+        self.text_ffn = nn.Sequential(
+            nn.LayerNorm(d), nn.Linear(d, 4 * d), nn.GELU(),
+            nn.Dropout(dropout), nn.Linear(4 * d, d),
+        )
+        self.gates = nn.Parameter(torch.zeros(4))
+
+    def forward(self, visual, text, padding):
+        v, t = self.visual_norm(visual), self.text_norm(text)
+        dv = self.visual_attention(v, t, t, key_padding_mask=padding, need_weights=False)[0]
+        dt = self.text_attention(t, v, v, need_weights=False)[0]
+        gates = self.gates.tanh()
+        visual = visual + gates[0] * dv
+        text = text + gates[1] * dt
+        visual = visual + gates[2] * self.visual_ffn(visual)
+        text = text + gates[3] * self.text_ffn(text)
+        return visual, text
 
 
 class ActionHead(nn.Module):
@@ -100,10 +144,25 @@ class ActionHead(nn.Module):
         )
         self.decoder = nn.TransformerDecoder(layer, config.layers, norm=nn.LayerNorm(d))
         self.output = nn.Linear(d, 7)
+        self.fusion = nn.ModuleList([
+            VisionLanguageFusion(d, config.heads, config.dropout)
+            for _ in range(config.fusion_layers)
+        ])
 
-    def forward(self, vision, text, state):
+    def forward(self, vision, text, state, tokens=None, padding=None):
         visual = (self.vision_proj(vision) + self.camera_embedding).flatten(1, 2)
-        context = torch.stack([self.text_proj(text), self.state_proj(state)], dim=1)
+        if self.fusion:
+            token_features = self.text_proj(tokens)
+            original_tokens = token_features
+            for layer in self.fusion:
+                visual, token_features = layer(visual, token_features, padding)
+            # Add the EOS interaction residual to the original pooled instruction.
+            eos = (~padding).sum(1) - 1
+            indices = torch.arange(len(eos), device=eos.device)
+            text_summary = self.text_proj(text) + (token_features - original_tokens)[indices, eos]
+        else:
+            text_summary = self.text_proj(text)
+        context = torch.stack([text_summary, self.state_proj(state)], dim=1)
         memory = torch.cat([visual, context + self.modality_embedding], dim=1)
         queries = self.action_queries.expand(state.shape[0], -1, -1)
         return self.output(self.decoder(queries, memory))
@@ -116,8 +175,8 @@ class Policy(nn.Module):
         self.head = ActionHead(config, self.backbone.vision_dim, self.backbone.text_dim)
 
     def forward(self, images, state, language):
-        vision, text = self.backbone(images, language)
-        return self.head(vision, text, state)
+        features = self.backbone(images, language)
+        return self.head(features[0], features[1], state, *features[2:])
 
 
 def action_loss(predictions, targets, mask):

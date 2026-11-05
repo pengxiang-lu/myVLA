@@ -166,9 +166,13 @@ def train(config, resume=None, init_checkpoint=None):
     episodes = scan_episodes(config.data, t.seed)
     saved = load_checkpoint(resume) if resume else None
     initial = load_checkpoint(init_checkpoint) if init_checkpoint else None
+    adding_fusion = False
     if initial:
         old = from_dict(initial["config"])
         config.model.revision = old.model.revision
+        adding_fusion = old.model.fusion_layers == 0 and config.model.fusion_layers > 0
+        if adding_fusion:
+            old.model.fusion_layers = config.model.fusion_layers
         if old.model != config.model or initial["manifest"] != manifest(episodes):
             raise ValueError("Initialization requires the same model and dataset split")
     if saved:
@@ -193,13 +197,19 @@ def train(config, resume=None, init_checkpoint=None):
         for key, value in stats.items():
             if not np.array_equal(value, np.asarray(initial["stats"][key], np.float32)):
                 raise ValueError("Initialization normalization differs from checkpoint")
-        policy.head.load_state_dict(initial["head"], strict=True)
+        incompatible = policy.head.load_state_dict(initial["head"], strict=not adding_fusion)
+        if adding_fusion and (
+            incompatible.unexpected_keys
+            or any(not key.startswith("fusion.") for key in incompatible.missing_keys)
+        ):
+            raise ValueError("Unexpected keys when initializing fusion")
         if config.model.backend == "tiny":
             policy.backbone.load_state_dict(initial["tiny_backbone"], strict=True)
         (out / "initialization.json").write_text(json.dumps({
             "checkpoint": str(Path(init_checkpoint).resolve()),
             "checkpoint_step": initial["step"],
             "optimizer_reset": True,
+            "added_fusion_layers": config.model.fusion_layers if adding_fusion else 0,
         }, indent=2))
     optimizer = torch.optim.AdamW(policy.head.parameters(), lr=t.lr, weight_decay=t.weight_decay)
 

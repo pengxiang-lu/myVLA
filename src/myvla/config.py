@@ -15,6 +15,7 @@ class ModelConfig:
     heads: int = 8
     chunk_size: int = 8
     dropout: float = 0.1
+    fusion_layers: int = 0
 
 
 @dataclass
@@ -59,6 +60,8 @@ class Config:
             raise ValueError("model.backend must be clip or tiny (offline smoke test only)")
         if min(m.hidden_dim, m.layers, m.heads, m.chunk_size, m.image_size) < 1:
             raise ValueError("Model dimensions must be positive")
+        if not isinstance(m.fusion_layers, int) or m.fusion_layers < 0:
+            raise ValueError("fusion_layers must be a nonnegative integer")
         if m.hidden_dim % m.heads or not 0 <= m.dropout < 1:
             raise ValueError("Invalid attention dimensions or dropout")
         if m.backend == "clip" and m.image_size != 224:
