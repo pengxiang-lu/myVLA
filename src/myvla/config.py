@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 import yaml
@@ -57,6 +57,33 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     data: DataConfig = field(default_factory=DataConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
+
+    def for_dataset(self, dataset):
+        """Select dataset IO defaults while retaining the model version and training settings."""
+        if dataset not in {"libero", "metaworld"}:
+            raise ValueError("dataset must be libero or metaworld")
+        if dataset == self.data.dataset:
+            return self
+        meta = dataset == "metaworld"
+        suite = "metaworld_mt50" if meta else "libero_spatial"
+        model_version = "v2" if self.model.fusion_layers else "v1"
+        return replace(
+            self,
+            model=replace(
+                self.model,
+                state_dim=4 if meta else 8,
+                action_dim=4 if meta else 7,
+                cameras=1 if meta else 2,
+            ),
+            data=replace(
+                self.data,
+                dataset=dataset,
+                directory=f"data/{suite}",
+                pattern="*_demo.hdf5",
+                flip_vertical=not meta,
+            ),
+            train=replace(self.train, output_dir=f"runs/{suite}_{model_version}"),
+        ).validate()
 
     def validate(self):
         m, d, t = self.model, self.data, self.train

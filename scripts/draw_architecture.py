@@ -126,7 +126,6 @@ ax.add_patch(Rectangle((8.4, 0.32), 0.26, 0.26, facecolor="#eef5fc", edgecolor=b
 text(10.15, 0.46, "Trainable", 14, muted)
 text(15.9, 0.46, "LIBERO-Spatial", 14, muted)
 
-for extension in ("png", "svg"):
-    output = OUT / f"model_architecture_v2.{extension}"
-    fig.savefig(output, dpi=240, bbox_inches="tight", pad_inches=0.1, facecolor="white")
-    print(output)
+output = OUT / "v2.png"
+fig.savefig(output, dpi=240, bbox_inches="tight", pad_inches=0.1, facecolor="white")
+print(output)

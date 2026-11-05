@@ -1,5 +1,7 @@
+# V1: LIBERO-Spatial by default; use --dataset metaworld for MT50.
+# Run commands from the project root.
 model:
-  backbone: /home/lpx/python-project/myVLA/models/clip-vit-base-patch16
+  backbone: models/clip-vit-base-patch16
   revision: 57c216476eefef5ab752ec549e440a49ae4ae5f3
   backend: clip
   image_size: 224
@@ -8,18 +10,18 @@ model:
   heads: 8
   chunk_size: 8
   dropout: 0.1
-  fusion_layers: 2
-  state_dim: 4
-  action_dim: 4
-  cameras: 1
+  fusion_layers: 0
+  state_dim: 8
+  action_dim: 7
+  cameras: 2
 data:
-  directory: data/metaworld_mt50
+  directory: data/libero_spatial
   pattern: '*_demo.hdf5'
   val_fraction: 0.1
-  flip_vertical: false
-  dataset: metaworld
+  flip_vertical: true
+  dataset: libero
 train:
-  output_dir: runs/metaworld_mt50_v1
+  output_dir: runs/libero_spatial_v1
   device: cuda
   precision: fp16
   batch_size: 4
@@ -32,7 +34,7 @@ train:
   grad_clip: 1.0
   validate_every: 500
   validation_batches: 50
-  save_every: 500
+  save_every: 1000
   log_every: 20
   seed: 42
   image_shift: 4

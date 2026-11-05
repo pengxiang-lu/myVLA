@@ -155,6 +155,42 @@ def sim_smoke(libero_root, gl):
         env.close()
 
 
+def add_train_arguments(parser):
+    parser.add_argument("--config")
+    parser.add_argument(
+        "--dataset",
+        choices=["libero", "metaworld"],
+        help="Select dataset IO defaults; defaults to the YAML/checkpoint setting",
+    )
+    parser.add_argument("--data-dir", help="Override the training dataset directory")
+    parser.add_argument("--resume")
+    parser.add_argument("--init-checkpoint", help="Initialize weights for a new fine-tuning run")
+    parser.add_argument("--device")
+    parser.add_argument("--steps", type=int)
+    parser.add_argument("--workers", type=int)
+    parser.add_argument("--output-dir")
+
+
+def run_training(args, parser):
+    if args.config:
+        config = load_config(args.config)
+    elif args.resume:
+        config = from_dict(load_checkpoint(args.resume)["config"])
+    else:
+        parser.error("train requires --config or --resume")
+    if args.dataset:
+        if args.resume and args.dataset != config.data.dataset:
+            parser.error("Cannot switch dataset when resuming a checkpoint")
+        config = config.for_dataset(args.dataset)
+    if args.data_dir is not None:
+        config.data.directory = args.data_dir
+    for name in ("device", "steps", "workers", "output_dir"):
+        value = getattr(args, name)
+        if value is not None:
+            setattr(config.train, name, value)
+    train(config, resume=args.resume, init_checkpoint=args.init_checkpoint)
+
+
 def main():
     parser = argparse.ArgumentParser(description="myVLA: frozen CLIP + action-chunk Transformer")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -191,13 +227,7 @@ def main():
     p.add_argument("--protocol", choices=["lerobot", "benchmark"], default="lerobot")
     p.add_argument("--videos", action="store_true")
     p = commands.add_parser("train")
-    p.add_argument("--config")
-    p.add_argument("--resume")
-    p.add_argument("--init-checkpoint", help="Initialize weights for a new fine-tuning run")
-    p.add_argument("--device")
-    p.add_argument("--steps", type=int)
-    p.add_argument("--workers", type=int)
-    p.add_argument("--output-dir")
+    add_train_arguments(p)
     p = commands.add_parser("eval", help="Closed-loop LIBERO simulator evaluation")
     p.add_argument("--checkpoint", required=True)
     p.add_argument(
@@ -274,17 +304,7 @@ def main():
             args.videos,
         )
     elif args.command == "train":
-        if args.config:
-            config = load_config(args.config)
-        elif args.resume:
-            config = from_dict(load_checkpoint(args.resume)["config"])
-        else:
-            parser.error("train requires --config or --resume")
-        for name in ("device", "steps", "workers", "output_dir"):
-            value = getattr(args, name)
-            if value is not None:
-                setattr(config.train, name, value)
-        train(config, resume=args.resume, init_checkpoint=args.init_checkpoint)
+        run_training(args, parser)
     elif args.command == "eval":
         from .evaluate import evaluate
 
