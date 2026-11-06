@@ -10,3 +10,5 @@ third_party/
 .libero/
 models/
 .venv-mt50/
+.agents
+.codex

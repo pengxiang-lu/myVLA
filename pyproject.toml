@@ -11,6 +11,7 @@ requires-python = ">=3.10,<3.12"
 dependencies = [
   "torch==2.6.0", "transformers==4.57.6", "numpy==1.26.4",
   "h5py>=3.11,<4", "pillow>=10.4,<12", "pyyaml>=6.0.2,<7",
+  "matplotlib>=3.8,<3.11",
 ]
 
 [project.optional-dependencies]
@@ -22,7 +23,6 @@ sim = [
   "robosuite==1.4.1", "mujoco==2.3.7", "bddl==1.0.1", "termcolor>=2,<4",
   "gym==0.26.2", "numba>=0.59,<0.62", "easydict>=1.9,<2",
   "cloudpickle>=2.2,<4", "imageio[ffmpeg]>=2.34,<3",
-  "matplotlib>=3.8,<3.11",
   "future>=0.18.3,<2",
 ]
 

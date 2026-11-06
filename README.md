@@ -4,7 +4,7 @@
 
 　　**myVLA 是一个基于 PyTorch 的轻量视觉—语言—动作（VLA）项目**，支持 LIBERO 和 MetaWorld MT50 上的行为克隆训练与闭环评估。模型使用冻结的 CLIP 编码图像和语言，通过可训练的动作解码器预测连续动作块。
 
-　　项目包含 V1 基础版和 V2 双向融合版。V2 在动作解码前增加视觉—语言交叉注意力，下图为其 LIBERO 配置。
+　　项目包含 V1 基础版和 V2 双向融合版。V2 在动作解码前增加视觉—语言交叉注意力，当前训练配置使用 6 层双向融合块，动作解码器为 4 层。下图展示其结构，图中的层数对应早期 2 层融合版本。
 
 ![myVLA V2 模型架构](assets/v2.png)
 
@@ -73,20 +73,20 @@ uv run scripts/inspect_data.py \
 
 ### 3.2 LIBERO 模型训练
 
-　　V1 使用本地 CLIP 配置进行 30,000 步训练，输出到新目录：
+　　V1 使用本地 CLIP 配置进行 20,000 步训练，输出到新目录：
 
 ```bash
 uv run src/myvla/train.py \
   --config configs/train_cfg_v1.yaml \
-  --steps 30000 --output-dir outputs/train/libero_spatial_v1
+  --steps 20000 --output-dir outputs/train/libero_spatial_v1
 ```
 
-　　V2 使用双向融合配置开始独立训练，不加载 V1 动作头。`configs/` 只保留 `v1.yaml` 和 `v2.yaml`，两份配置均默认训练 30,000 步：
+　　V2 使用双向融合配置开始独立训练，不加载 V1 动作头。`configs/` 只保留 `v1.yaml` 和 `v2.yaml`，两份配置均默认训练 20,000 步：
 
 ```bash
 uv run src/myvla/train.py \
   --config configs/train_cfg_v2.yaml \
-  --steps 30000 --output-dir outputs/train/libero_spatial_v2
+  --steps 20000 --output-dir outputs/train/libero_spatial_v2
 ```
 
 　　两份配置的学习率、数据增强、batch、梯度累积及训练计划一致，仅融合层数和默认输出目录不同。先检查流程时，可将步数改为 `--steps 200` 并使用单独输出目录。训练步数按优化器更新尝试计数，不是 epoch。
@@ -109,7 +109,7 @@ uv run scripts/inspect_data.py \
   --dataset metaworld --data-dir data/metaworld_mt50
 
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --config configs/v2.yaml --dataset metaworld
+  --config configs/train_cfg_v2.yaml --dataset metaworld
 ```
 
 　　导入目标目录必须不存在。当前导入器支持 LeRobot v3 内嵌 RGB，不支持旧版 v2 或视频存储。`--dataset metaworld` 自动切换相机数量、状态/动作维度和默认数据目录，V1、V2 均可使用；数据在其他位置时追加 `--data-dir`。上述 V2 命令默认训练 30,000 步，输出为 `outputs/train/metaworld_mt50_v2`；其输入输出维度与 LIBERO 不同，需要独立训练。
@@ -118,7 +118,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 
 　　查看训练参数使用 `uv run src/myvla/train.py --help`。两份配置默认使用 LIBERO-Spatial，输出分别为 `outputs/train/libero_spatial_v1` 和 `outputs/train/libero_spatial_v2`；命令行 `--output-dir` 可以覆盖。主要训练参数在 YAML 中设置：`lr` 为学习率，`steps` 为总步数，`batch_size` 为单批样本数，`grad_accumulation` 为梯度累积次数。单卡有效 batch 为两者之积；`image_shift` 和 `color_jitter` 控制训练期间的图像增强。
 
-　　训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。训练目录保存 `latest.pt`、`best.pt` 和 `metrics.jsonl` 等文件。`latest.pt` 用于恢复训练，`best.pt` 对应最低离线验证 loss；只会恢复到已保存的步数。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
+　　训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。训练目录保存 `latest.pt`、`best.pt`、`metrics.jsonl` 和 `loss_curve.png`。绘图逻辑内置于 `train.py`，每次验证后自动更新 loss 曲线。`latest.pt` 用于恢复训练，`best.pt` 对应最低离线验证 loss；只会恢复到已保存的步数。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
 
 ```bash
 # 恢复 LIBERO 训练

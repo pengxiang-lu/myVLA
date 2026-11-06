@@ -967,6 +967,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "h5py" },
+    { name = "matplotlib" },
     { name = "numpy" },
     { name = "pillow" },
     { name = "pyyaml" },
@@ -991,7 +992,6 @@ sim = [
     { name = "gym" },
     { name = "imageio", version = "2.38.0", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, extra = ["ffmpeg"], marker = "(python_full_version < '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
     { name = "imageio", version = "2.38.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, extra = ["ffmpeg"], marker = "(python_full_version >= '3.11' and extra == 'extra-5-myvla-sim') or (extra == 'extra-5-myvla-mt50' and extra == 'extra-5-myvla-sim')" },
-    { name = "matplotlib" },
     { name = "mujoco", version = "2.3.7", source = { registry = "https://mirrors.aliyun.com/pypi/simple" } },
     { name = "numba" },
     { name = "robosuite" },
@@ -1015,7 +1015,7 @@ requires-dist = [
     { name = "h5py", specifier = ">=3.11,<4" },
     { name = "imageio", extras = ["ffmpeg"], marker = "extra == 'mt50'", specifier = ">=2.34,<3" },
     { name = "imageio", extras = ["ffmpeg"], marker = "extra == 'sim'", specifier = ">=2.34,<3" },
-    { name = "matplotlib", marker = "extra == 'sim'", specifier = ">=3.8,<3.11" },
+    { name = "matplotlib", specifier = ">=3.8,<3.11" },
     { name = "metaworld", marker = "extra == 'mt50'", specifier = "==3.0.0" },
     { name = "mujoco", marker = "extra == 'mt50'", specifier = "==3.3.0" },
     { name = "mujoco", marker = "extra == 'sim'", specifier = "==2.3.7" },

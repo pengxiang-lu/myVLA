@@ -16,7 +16,7 @@ def load_script(name):
 @pytest.mark.parametrize("override", [None, "outputs/train/continued"])
 def test_resume_uses_relocated_checkpoint_directory(monkeypatch, tmp_path, override):
     script = load_script("train")
-    config = script.load_config(ROOT / "configs/v1.yaml").to_dict()
+    config = script.load_config(ROOT / "configs/train_cfg_v1.yaml").to_dict()
     config["train"]["output_dir"] = "runs/old_location"
     monkeypatch.setattr(script, "load_checkpoint", lambda _: {"config": config})
     captured = []
@@ -37,7 +37,7 @@ def test_train_script_from_another_directory(monkeypatch, tmp_path):
     script.main(
         [
             "--config",
-            "configs/v2.yaml",
+            "configs/train_cfg_v2.yaml",
             "--dataset",
             "metaworld",
             "--steps",
@@ -50,7 +50,7 @@ def test_train_script_from_another_directory(monkeypatch, tmp_path):
     )
     config = captured[0]
     assert Path.cwd() == ROOT
-    assert config.model.fusion_layers == 2
+    assert config.model.fusion_layers == 6
     assert config.data.dataset == "metaworld"
     assert config.data.directory == "data/custom_mt50"
     assert config.train.steps == 7

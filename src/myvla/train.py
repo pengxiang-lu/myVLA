@@ -24,6 +24,40 @@ from .model import Policy, action_loss
 from .preprocess import augment_images
 
 
+def plot_loss(directory):
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    directory = Path(directory)
+    rows = []
+    for line in (directory / "metrics.jsonl").read_text().splitlines():
+        if line.strip():
+            rows.append(json.loads(line))
+    if not rows:
+        raise ValueError("No training metrics to plot")
+    fig = Figure(figsize=(10, 5), layout="constrained")
+    FigureCanvasAgg(fig)
+    ax = fig.subplots()
+    train = [r for r in rows if "loss" in r]
+    val = [r for r in rows if "val_loss" in r]
+    ax.plot([r["step"] for r in train], [r["loss"] for r in train],
+            color="#9bbbd5", alpha=0.6, linewidth=0.8, label="Train loss (logged batches)")
+    if val:
+        ax.plot([r["step"] for r in val], [r["val_loss"] for r in val],
+                color="#d97706", linewidth=1.8, marker=".", label="Validation loss")
+        best = min(val, key=lambda r: r["val_loss"])
+        ax.scatter([best["step"]], [best["val_loss"]], color="#b45309", zorder=3)
+        ax.annotate(f"Best val: {best['val_loss']:.4f} @ {best['step']:,}",
+                    (best["step"], best["val_loss"]), xytext=(8, 12),
+                    textcoords="offset points", fontsize=10)
+    ax.set(title=directory.name, xlabel="Optimizer step", ylabel="Action loss")
+    ax.grid(alpha=0.2)
+    ax.legend()
+    output = directory / "loss_curve.png"
+    fig.savefig(output, dpi=160)
+    return output
+
+
 def seed_everything(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -365,6 +399,9 @@ def train(config, resume=None, init_checkpoint=None):
                     step,
                     best,
                 )
+            if "val_loss" in record:
+                log.flush()
+                plot_loss(out)
     return out / "latest.pt"
 
 

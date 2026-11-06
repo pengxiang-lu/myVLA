@@ -11,7 +11,7 @@ CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 
 @pytest.mark.parametrize("version", ["v1", "v2"])
 def test_dataset_selection_preserves_architecture_and_training(version):
-    original = load_config(CONFIGS / f"{version}.yaml")
+    original = load_config(CONFIGS / f"train_cfg_{version}.yaml")
     meta = original.for_dataset("metaworld")
     assert original.data.dataset == "libero"
     assert meta.model.fusion_layers == original.model.fusion_layers
@@ -36,7 +36,7 @@ def test_training_cli_dataset_and_directory_overrides(monkeypatch):
             "myvla",
             "train",
             "--config",
-            str(CONFIGS / "v1.yaml"),
+            str(CONFIGS / "train_cfg_v1.yaml"),
             "--dataset",
             "metaworld",
             "--data-dir",
@@ -57,7 +57,7 @@ def test_training_cli_dataset_and_directory_overrides(monkeypatch):
 
 
 def test_resume_cannot_switch_dataset(monkeypatch):
-    config = load_config(CONFIGS / "v2.yaml")
+    config = load_config(CONFIGS / "train_cfg_v2.yaml")
     monkeypatch.setattr(training, "load_checkpoint", lambda _: {"config": config.to_dict()})
     monkeypatch.setattr(
         "sys.argv",
