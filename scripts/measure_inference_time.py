@@ -125,6 +125,7 @@ def benchmark(args):
         "image_size": m.image_size,
         "cameras": m.cameras,
         "fusion_layers": m.fusion_layers,
+        "train_vision_encoder": m.train_vision_encoder,
         "chunk_size": m.chunk_size,
         "output_shape": shape,
         "language": language,

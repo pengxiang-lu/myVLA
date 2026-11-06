@@ -166,6 +166,10 @@ def save_checkpoint(
     if ema is not None:
         payload["ema_head"] = ema.module.state_dict()
         payload["ema_updates"] = ema.updates
+        if ema.vision is not None:
+            payload["ema_vision"] = ema.vision.state_dict()
+    if config.model.train_vision_encoder:
+        payload["vision"] = policy.backbone.clip.vision_model.state_dict()
     # Real CLIP is referenced by pinned revision; random smoke weights must be retained.
     if config.model.backend == "tiny":
         payload["tiny_backbone"] = policy.backbone.state_dict()
@@ -192,6 +196,14 @@ def checkpoint_head(payload, weights="auto"):
     return payload["head"], "raw"
 
 
+def load_visual_weights(policy, payload, weights):
+    if policy.backbone.train_vision_encoder:
+        key = "ema_vision" if weights == "ema" else "vision"
+        if key not in payload:
+            raise ValueError(f"Trainable visual encoder checkpoint is missing {key}")
+        policy.backbone.clip.vision_model.load_state_dict(payload[key], strict=True)
+
+
 def policy_from_checkpoint(path, device, weights="auto"):
     payload = load_checkpoint(path)
     config = from_dict(payload["config"])
@@ -201,6 +213,7 @@ def policy_from_checkpoint(path, device, weights="auto"):
     payload["inference_weights"] = selected
     if config.model.backend == "tiny":
         policy.backbone.load_state_dict(payload["tiny_backbone"], strict=True)
+    load_visual_weights(policy, payload, selected)
     policy.to(device).eval()
     stats = {k: np.asarray(v, np.float32) for k, v in payload["stats"].items()}
     return policy, config, stats, payload
@@ -270,6 +283,7 @@ def train(config, resume=None, init_checkpoint=None):
             raise ValueError("Unexpected keys when initializing fusion")
         if config.model.backend == "tiny":
             policy.backbone.load_state_dict(initial["tiny_backbone"], strict=True)
+        load_visual_weights(policy, initial, initial_weights)
         (out / "initialization.json").write_text(
             json.dumps(
                 {
@@ -282,7 +296,14 @@ def train(config, resume=None, init_checkpoint=None):
                 indent=2,
             )
         )
-    optimizer = torch.optim.AdamW(policy.head.parameters(), lr=t.lr, weight_decay=t.weight_decay)
+    trainable = [p for p in policy.parameters() if p.requires_grad]
+    groups = [{"params": list(policy.head.parameters())}]
+    if config.model.train_vision_encoder:
+        groups.append({
+            "params": list(policy.backbone.clip.vision_model.parameters()),
+            "lr": t.vision_lr if t.vision_lr is not None else t.lr,
+        })
+    optimizer = torch.optim.AdamW(groups, lr=t.lr, weight_decay=t.weight_decay)
 
     def lr_scale(step):
         if step < t.warmup_steps:
@@ -297,15 +318,21 @@ def train(config, resume=None, init_checkpoint=None):
         policy.head.load_state_dict(saved["head"])
         if config.model.backend == "tiny":
             policy.backbone.load_state_dict(saved["tiny_backbone"])
+        load_visual_weights(policy, saved, "raw")
         optimizer.load_state_dict(saved["optimizer"])
         scheduler.load_state_dict(saved["scheduler"])
         scaler.load_state_dict(saved["scaler"])
         start, best = saved["step"], saved["best_val"]
-    ema = HeadEMA(policy.head, t.ema_decay) if t.ema_decay else None
+    vision = policy.backbone.clip.vision_model if config.model.train_vision_encoder else None
+    ema = HeadEMA(policy.head, t.ema_decay, vision=vision) if t.ema_decay else None
     if saved and ema is not None:
         if "ema_head" not in saved or "ema_updates" not in saved:
             raise ValueError("EMA resume requires saved EMA weights and update count")
         ema.module.load_state_dict(saved["ema_head"], strict=True)
+        if ema.vision is not None:
+            if "ema_vision" not in saved:
+                raise ValueError("Visual EMA resume requires saved ema_vision weights")
+            ema.vision.load_state_dict(saved["ema_vision"], strict=True)
         ema.updates = saved["ema_updates"]
     if start >= t.steps:
         raise ValueError("Checkpoint already reached configured training steps")
@@ -345,7 +372,8 @@ def train(config, resume=None, init_checkpoint=None):
                 "train_frames": len(datasets["train"]),
                 "val_frames": len(datasets["val"]),
                 "device": str(device),
-                "trainable_parameters": sum(p.numel() for p in policy.head.parameters()),
+                "trainable_parameters": sum(p.numel() for p in trainable),
+                "train_vision_encoder": config.model.train_vision_encoder,
                 "backend": config.model.backend,
             }
         ),
@@ -370,7 +398,7 @@ def train(config, resume=None, init_checkpoint=None):
                 scaler.scale(loss / t.grad_accumulation).backward()
                 train_loss += loss.item() / t.grad_accumulation
             scaler.unscale_(optimizer)
-            norm = torch.nn.utils.clip_grad_norm_(policy.head.parameters(), t.grad_clip)
+            norm = torch.nn.utils.clip_grad_norm_(trainable, t.grad_clip)
             previous_scale = scaler.get_scale()
             scaler.step(optimizer)
             scaler.update()
@@ -378,7 +406,7 @@ def train(config, resume=None, init_checkpoint=None):
             if not skipped:
                 scheduler.step()
                 if ema is not None:
-                    ema.update(policy.head)
+                    ema.update(policy.head, vision=vision)
             record = {
                 "step": step,
                 "loss": train_loss,
@@ -386,6 +414,8 @@ def train(config, resume=None, init_checkpoint=None):
                 "grad_norm": float(norm),
                 "optimizer_skipped": skipped,
             }
+            if config.model.train_vision_encoder:
+                record["vision_lr"] = optimizer.param_groups[1]["lr"]
             improved = False
             if step % t.validate_every == 0 or step == t.steps:
                 record["val_loss"] = validate(
@@ -486,7 +516,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Train V1 or V2 on LIBERO or MetaWorld MT50.",
+        description="Train V1, V2 or V3 on LIBERO or MetaWorld MT50.",
         epilog="Relative config, data, model and output paths use the project root.",
     )
     add_train_arguments(parser)

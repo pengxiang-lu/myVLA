@@ -2,9 +2,9 @@
 
 ## 一、简介
 
-　　**myVLA 是一个基于 PyTorch 的轻量视觉—语言—动作（VLA）项目**，支持 LIBERO 和 MetaWorld MT50 上的行为克隆训练与闭环评估。模型使用冻结的 CLIP 编码图像和语言，通过可训练的动作解码器预测连续动作块。
+　　**myVLA 是一个基于 PyTorch 的轻量视觉—语言—动作（VLA）项目**，支持 LIBERO 和 MetaWorld MT50 上的行为克隆训练与闭环评估。模型使用预训练 CLIP 编码图像和语言，通过可训练的动作解码器预测连续动作块。V1、V2 冻结两个编码器；V3 联合训练视觉编码器，语言编码器保持冻结。
 
-　　项目包含 V1 基础版和 V2 双向融合版。V2 在动作解码前增加视觉—语言交叉注意力，当前训练配置使用 6 层双向融合块，动作解码器为 4 层。下图展示其结构，图中的层数对应早期 2 层融合版本。
+　　项目包含 V1 基础版、V2 双向融合版和 V3 视觉联合训练版。V2、V3 在动作解码前增加视觉—语言交叉注意力，当前训练配置使用 6 层双向融合块，动作解码器为 4 层。下图展示 V2 的结构，图中的层数对应早期 2 层融合版本。
 
 ![myVLA V2 模型架构](assets/v2.png)
 
@@ -81,7 +81,7 @@ uv run src/myvla/train.py \
   --steps 20000 --output-dir outputs/train/libero_spatial_v1
 ```
 
-　　V2 使用双向融合配置开始独立训练，不加载 V1 动作头。`configs/` 只保留 `v1.yaml` 和 `v2.yaml`，两份配置均默认训练 20,000 步：
+　　V2 使用双向融合配置开始独立训练，不加载 V1 动作头。V1、V2 配置分别为 `configs/train_cfg_v1.yaml` 和 `configs/train_cfg_v2.yaml`，均默认训练 20,000 步：
 
 ```bash
 uv run src/myvla/train.py \
@@ -90,6 +90,17 @@ uv run src/myvla/train.py \
 ```
 
 　　两份配置的学习率、数据增强、batch、梯度累积及训练计划一致，仅融合层数和默认输出目录不同。先检查流程时，可将步数改为 `--steps 200` 并使用单独输出目录。训练步数按优化器更新尝试计数，不是 epoch。
+
+　　V3 在 V2 六层融合结构上设置 `model.train_vision_encoder: true`，联合训练 CLIP 视觉编码器、融合层和动作头；文本编码器及 CLIP 原始对比学习投影层保持冻结。从预训练 CLIP 和随机动作头开始独立训练：
+
+```bash
+HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
+  --config configs/train_cfg_v3.yaml
+```
+
+　　V3 默认输出到 `outputs/train/libero_spatial_v3`，预测 12 步，无图像增强，启用 EMA。视觉编码器峰值学习率 `vision_lr: 1e-5`，动作头及融合层 `lr: 1e-4`，两者使用相同的 warmup 和余弦衰减计划。为控制激活显存，batch=2、梯度累积=32，有效 batch 仍为 64；验证使用 400 个 batch，仍覆盖固定 800 帧。视觉梯度、优化器状态和 EMA 会增加显存及 checkpoint 大小，实际 GPU 容量需以运行结果为准。
+
+　　评估、推理测速和恢复训练沿用原命令，将 checkpoint 路径改为 V3 对应文件即可。V3 checkpoint 同时保存训练后的原始视觉权重及 EMA 视觉权重，`--weights raw` / `ema` 会为视觉编码器与动作头选择匹配的一套权重。直接加载 V1/V2 checkpoint 的 `--resume` 不能切换为 V3。
 
 ### 3.3 MetaWorld MT50 数据准备与训练
 
@@ -120,7 +131,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 
 　　训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。训练目录保存 `latest.pt`、`best.pt` 和 `metrics.jsonl` 等文件。`latest.pt` 用于恢复训练，`best.pt` 对应最低离线验证 loss；只会恢复到已保存的步数。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
 
-　　V1、V2 配置均启用 `train.ema_decay: 0.999`。每次成功更新优化器后，对动作头（含融合层）更新 EMA 权重；冻结 CLIP 不复制。设为 `0.0` 可关闭。checkpoint 同时保存原始权重 `head`、EMA 权重 `ema_head` 及 EMA 更新次数；断点恢复使用原始权重恢复训练，并恢复 EMA 状态。
+　　V1、V2、V3 配置均启用 `train.ema_decay: 0.999`。每次成功更新优化器后，对动作头（含融合层）更新 EMA 权重；V3 还对视觉编码器更新 EMA，冻结的编码器不复制。设为 `0.0` 可关闭。checkpoint 同时保存原始权重 `head`、EMA 权重 `ema_head` 及 EMA 更新次数；V3 另外保存 `vision`、`ema_vision`。断点恢复使用原始权重恢复训练，并恢复 EMA 状态。
 
 　　启用 EMA 时，验证同时记录 `raw_val_loss` 和 `ema_val_loss`，其中 `val_loss` 采用 EMA 结果，`best.pt` 按最低 EMA 验证 loss 选择。`best.pt` 和 `latest.pt` 均含两套权重。评估与推理测速默认 `--weights auto`：有 EMA 时使用 EMA，旧 checkpoint 则使用原始权重；可指定 `--weights raw` 或 `--weights ema` 比较，实际使用的类型写入结果 JSON。
 

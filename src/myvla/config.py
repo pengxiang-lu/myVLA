@@ -19,6 +19,7 @@ class ModelConfig:
     state_dim: int = 8
     action_dim: int = 7
     cameras: int = 2
+    train_vision_encoder: bool = False
 
 
 @dataclass
@@ -51,6 +52,7 @@ class TrainConfig:
     image_shift: int = 0
     color_jitter: float = 0.0
     ema_decay: float = 0.0  # Zero disables EMA; keeps legacy checkpoints compatible.
+    vision_lr: float | None = None  # None uses the action head learning rate.
 
 
 @dataclass
@@ -67,7 +69,9 @@ class Config:
             return self
         meta = dataset == "metaworld"
         suite = "metaworld_mt50" if meta else "libero_spatial"
-        model_version = "v2" if self.model.fusion_layers else "v1"
+        model_version = (
+            "v3" if self.model.train_vision_encoder else "v2" if self.model.fusion_layers else "v1"
+        )
         return replace(
             self,
             model=replace(
@@ -99,6 +103,8 @@ class Config:
             )
         if m.backend not in {"clip", "tiny"}:
             raise ValueError("model.backend must be clip or tiny (offline smoke test only)")
+        if not isinstance(m.train_vision_encoder, bool):
+            raise ValueError("train_vision_encoder must be a boolean")
         if min(m.hidden_dim, m.layers, m.heads, m.chunk_size, m.image_size) < 1:
             raise ValueError("Model dimensions must be positive")
         if not isinstance(m.fusion_layers, int) or m.fusion_layers < 0:
@@ -135,6 +141,8 @@ class Config:
             raise ValueError("color_jitter must be in [0, 1)")
         if not 0 <= t.ema_decay < 1:
             raise ValueError("ema_decay must be in [0, 1); 0 disables EMA")
+        if t.vision_lr is not None and not t.vision_lr > 0:
+            raise ValueError("vision_lr must be positive when set")
         return self
 
     def to_dict(self):

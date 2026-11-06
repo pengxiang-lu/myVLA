@@ -136,6 +136,38 @@ def test_frozen_backbone_and_output(config):
     assert not torch.equal(before, policy.head.output.weight)
 
 
+def test_v3_updates_vision_while_text_and_unused_clip_projections_stay_frozen(config):
+    config.model.train_vision_encoder = True
+    config.model.fusion_layers = 2
+    policy = Policy(config.model).train()
+    vision = policy.backbone.clip.vision_model
+    text = policy.backbone.clip.text_model
+    assert vision.training and not text.training
+    assert all(p.requires_grad for p in vision.parameters())
+    assert all(not p.requires_grad for p in text.parameters())
+    before = {name: p.detach().clone() for name, p in vision.named_parameters()}
+    text_before = {name: p.detach().clone() for name, p in text.named_parameters()}
+    optimizer = torch.optim.AdamW([p for p in policy.parameters() if p.requires_grad], lr=1e-3)
+    # Repeated language exercises the frozen text cache across backward passes.
+    for _ in range(2):
+        optimizer.zero_grad(set_to_none=True)
+        predictions = policy(torch.randn(2, 2, 3, 32, 32), torch.zeros(2, 8), ["bowl"] * 2)
+        loss, _ = action_loss(
+            predictions, torch.zeros_like(predictions), torch.ones(2, 8, dtype=torch.bool)
+        )
+        loss.backward()
+        assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in vision.parameters())
+        optimizer.step()
+    assert any(not torch.equal(before[name], p) for name, p in vision.named_parameters())
+    for name, p in text.named_parameters():
+        assert p.grad is None
+        torch.testing.assert_close(p, text_before[name], rtol=0, atol=0)
+    assert not policy.backbone.clip.visual_projection.weight.requires_grad
+    assert not policy.backbone.clip.text_projection.weight.requires_grad
+    policy.eval()
+    assert not vision.training and not text.training
+
+
 def test_action_roundtrip_and_online_state():
     stats = {"action_mean": np.arange(6) * 0.01, "action_std": np.full(6, 0.3)}
     actions = np.array(
@@ -160,13 +192,16 @@ def test_action_roundtrip_and_online_state():
 @pytest.mark.parametrize("augmentation", [False, True])
 @pytest.mark.parametrize("fusion_layers", [0, 2])
 @pytest.mark.parametrize("ema_decay", [0.0, 0.999])
+@pytest.mark.parametrize("train_vision", [False, True])
 def test_resume_matches_uninterrupted_training(
-    config, monkeypatch, tmp_path, augmentation, fusion_layers, ema_decay
+    config, monkeypatch, tmp_path, augmentation, fusion_layers, ema_decay, train_vision
 ):
     import myvla.train as training
 
     config.model.fusion_layers = fusion_layers
     config.train.ema_decay = ema_decay
+    config.model.train_vision_encoder = train_vision
+    config.train.vision_lr = 1e-5 if train_vision else None
     if augmentation:
         config.train.image_shift = 2
         config.train.color_jitter = 0.1
@@ -196,15 +231,26 @@ def test_resume_matches_uninterrupted_training(
         for key, value in reference["ema_head"].items():
             torch.testing.assert_close(resumed["ema_head"][key], value, rtol=0, atol=0)
         assert reference["validation_weights"] == "ema"
+    if train_vision:
+        for name in (["vision", "ema_vision"] if ema_decay else ["vision"]):
+            for key, value in reference[name].items():
+                torch.testing.assert_close(resumed[name][key], value, rtol=0, atol=0)
     assert reference["best_val"] == resumed["best_val"]
     policy, _, _, _ = policy_from_checkpoint(checkpoint, torch.device("cpu"))
     assert not policy.training
     chosen = resumed["ema_head"] if ema_decay else resumed["head"]
     for key, value in policy.head.state_dict().items():
         torch.testing.assert_close(value, chosen[key], rtol=0, atol=0)
+    if train_vision:
+        chosen_vision = resumed["ema_vision"] if ema_decay else resumed["vision"]
+        for key, value in policy.backbone.clip.vision_model.state_dict().items():
+            torch.testing.assert_close(value, chosen_vision[key], rtol=0, atol=0)
     raw, _, _, _ = policy_from_checkpoint(checkpoint, torch.device("cpu"), weights="raw")
     for key, value in raw.head.state_dict().items():
         torch.testing.assert_close(value, resumed["head"][key], rtol=0, atol=0)
+    if train_vision:
+        for key, value in raw.backbone.clip.vision_model.state_dict().items():
+            torch.testing.assert_close(value, resumed["vision"][key], rtol=0, atol=0)
     with pytest.raises(FileExistsError):
         train(config)
     records = [

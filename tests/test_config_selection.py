@@ -9,12 +9,13 @@ from myvla.config import load_config
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 
 
-@pytest.mark.parametrize("version", ["v1", "v2"])
+@pytest.mark.parametrize("version", ["v1", "v2", "v3"])
 def test_dataset_selection_preserves_architecture_and_training(version):
     original = load_config(CONFIGS / f"train_cfg_{version}.yaml")
     meta = original.for_dataset("metaworld")
     assert original.data.dataset == "libero"
     assert meta.model.fusion_layers == original.model.fusion_layers
+    assert meta.model.train_vision_encoder == original.model.train_vision_encoder
     assert (meta.model.state_dim, meta.model.action_dim, meta.model.cameras) == (4, 4, 1)
     assert meta.data.directory == "data/metaworld_mt50"
     assert not meta.data.flip_vertical

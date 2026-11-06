@@ -1,4 +1,5 @@
 import hashlib
+from contextlib import nullcontext
 
 import torch
 import torch.nn.functional as F
@@ -11,6 +12,7 @@ class FrozenCLIP(nn.Module):
         super().__init__()
         self.backend = config.backend
         self.use_tokens = config.fusion_layers > 0
+        self.train_vision_encoder = config.train_vision_encoder
         if self.backend == "tiny":
             # A real, randomly initialized miniature CLIP for offline CPU tests only.
             clip_config = CLIPConfig(
@@ -47,6 +49,7 @@ class FrozenCLIP(nn.Module):
                 config.backbone, revision=config.revision
             )
         self.clip.requires_grad_(False)
+        self.clip.vision_model.requires_grad_(self.train_vision_encoder)
         self.clip.eval()
         self.vision_dim = self.clip.config.vision_config.hidden_size
         self.text_dim = self.clip.config.text_config.hidden_size
@@ -54,15 +57,20 @@ class FrozenCLIP(nn.Module):
 
     def train(self, mode=True):
         super().train(False)
+        self.clip.vision_model.train(mode and self.train_vision_encoder)
         return self
 
-    @torch.no_grad()
     def forward(self, images, languages):
         batch, cameras = images.shape[:2]
-        vision = self.clip.vision_model(pixel_values=images.flatten(0, 1)).last_hidden_state
+        context = nullcontext() if self.train_vision_encoder else torch.no_grad()
+        with context:
+            vision = self.clip.vision_model(pixel_values=images.flatten(0, 1)).last_hidden_state
         # Drop CLS; each patch already carries CLIP spatial position information.
         vision = vision[:, 1:].reshape(batch, cameras, -1, self.vision_dim)
-        device = images.device
+        return (vision.float(), *self.encode_text(languages, images.device))
+
+    @torch.no_grad()
+    def encode_text(self, languages, device):
         texts, tokens = [], []
         for language in languages:
             if language not in self.text_cache:
@@ -85,11 +93,11 @@ class FrozenCLIP(nn.Module):
                 tokens.append(sequence)
         pooled = torch.stack(texts).to(device)
         if not self.use_tokens:
-            return vision.float(), pooled
+            return (pooled,)
         lengths = torch.tensor([len(t) for t in tokens], device=device)
         tokens = nn.utils.rnn.pad_sequence(tokens, batch_first=True).to(device)
         padding = torch.arange(tokens.shape[1], device=device)[None] >= lengths[:, None]
-        return vision.float(), pooled, tokens, padding
+        return pooled, tokens, padding
 
 
 class VisionLanguageFusion(nn.Module):
