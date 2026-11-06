@@ -118,7 +118,13 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 
 　　查看训练参数使用 `uv run src/myvla/train.py --help`。两份配置默认使用 LIBERO-Spatial，输出分别为 `outputs/train/libero_spatial_v1` 和 `outputs/train/libero_spatial_v2`；命令行 `--output-dir` 可以覆盖。主要训练参数在 YAML 中设置：`lr` 为学习率，`steps` 为总步数，`batch_size` 为单批样本数，`grad_accumulation` 为梯度累积次数。单卡有效 batch 为两者之积；`image_shift` 和 `color_jitter` 控制训练期间的图像增强。
 
-　　训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。训练目录保存 `latest.pt`、`best.pt`、`metrics.jsonl` 和 `loss_curve.png`。绘图逻辑内置于 `train.py`，每次验证后自动更新 loss 曲线。`latest.pt` 用于恢复训练，`best.pt` 对应最低离线验证 loss；只会恢复到已保存的步数。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
+　　训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。训练目录保存 `latest.pt`、`best.pt` 和 `metrics.jsonl` 等文件。`latest.pt` 用于恢复训练，`best.pt` 对应最低离线验证 loss；只会恢复到已保存的步数。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
+
+　　V1、V2 配置均启用 `train.ema_decay: 0.999`。每次成功更新优化器后，对动作头（含融合层）更新 EMA 权重；冻结 CLIP 不复制。设为 `0.0` 可关闭。checkpoint 同时保存原始权重 `head`、EMA 权重 `ema_head` 及 EMA 更新次数；断点恢复使用原始权重恢复训练，并恢复 EMA 状态。
+
+　　启用 EMA 时，验证同时记录 `raw_val_loss` 和 `ema_val_loss`，其中 `val_loss` 采用 EMA 结果，`best.pt` 按最低 EMA 验证 loss 选择。`best.pt` 和 `latest.pt` 均含两套权重。评估与推理测速默认 `--weights auto`：有 EMA 时使用 EMA，旧 checkpoint 则使用原始权重；可指定 `--weights raw` 或 `--weights ema` 比较，实际使用的类型写入结果 JSON。
+
+　　旧 checkpoint 未启用 EMA，直接 `--resume` 会保留原训练方式。若要从已有权重开始 EMA 微调，需使用开启 EMA 的配置和 `--init-checkpoint`，并指定新的输出目录；该操作重置优化器和 EMA 更新次数。有 EMA 的初始化 checkpoint 默认使用 EMA 权重作为微调起点。
 
 ```bash
 # 恢复 LIBERO 训练
@@ -145,9 +151,9 @@ unset UV_PROJECT_ENVIRONMENT
 export LIBERO_ROOT=/home/lpx/python-project/LIBERO
 
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_spatial_v2/best.pt \
+  --checkpoint outputs/train/libero_spatial_v1/best.pt \
   --suite libero_spatial --episodes 10 --execute-steps 4 \
-  --output-dir outputs/eval/libero_spatial_v2
+  --output-dir outputs/eval/libero_spatial_v1
 ```
 
 　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--videos` 保存视频。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，每次执行 4 步预测动作后重新观察。
@@ -166,3 +172,67 @@ HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
 　　默认评估 50 个任务，每任务 50 回合，每回合最多 500 步。`--protocol lerobot` 使用可复现的随机位置；`--protocol benchmark` 使用 MetaWorld MT50 提供的 goal，每任务最多 50 个。快速检查可追加 `--tasks 0 --episodes 2 --horizon 50`，保存视频使用 `--videos`。
 
 　　评估输出为 `episodes.jsonl`、`results.json` 和可选 MP4，根据环境成功信号统计成功率。离线验证 loss 不等于成功率；比较实验时应保持评估协议、seed、回合数及动作执行长度一致。每次评估使用新的输出目录。
+
+### 4.3 推理耗时测试
+
+​	使用 checkpoint 中的模型结构测试 batch=1 的完整动作块推理，无需启动仿真：
+
+```bash
+HF_HUB_OFFLINE=1 uv run scripts/measure_inference_time.py \
+  --checkpoint outputs/train/libero_spatial_v1/latest.pt \
+  --device cuda --precision fp32 \
+  --output outputs/benchmark/libero_spatial_v1.json
+
+HF_HUB_OFFLINE=1 uv run scripts/measure_inference_time.py \
+  --checkpoint outputs/train/libero_spatial_v2/latest.pt \
+  --device cuda --precision fp32 \
+  --output outputs/benchmark/libero_spatial_v2.json
+```
+
+具体流程是：
+
+1.  使用 **单张 GPU、batch=1**，加载 checkpoint，模型进入评估模式并关闭梯度，报告记录实际 GPU 型号。
+2.  提前准备固定的合成图像、状态和分词后的语言输入，并放到 GPU。脚本使用 eager 模式，不启用编译或 CUDA Graph；输入准备和传输不计时。
+3.  **预热 10 次**，每次推理后同步 GPU。
+4.  正式测量 **50 次**：每次开始前同步 GPU，生成完整动作块后再次同步，再记录耗时。
+5.  取 50 次耗时的**中位数**作为延迟，同时报告平均值、P95、最小值、最大值和各次耗时。动作长度从 checkpoint 读取；使用当前 LIBERO 配置新训练的模型时，每次生成 **12 步动作**，旧的 8 步权重仍生成 8 步。
+
+​	计时包含视觉编码、语言编码、融合、动作头及 GPU 上的动作反归一化、夹爪转换和裁剪；不包含模型加载、输入准备和传输、输出拷回 CPU、通信或环境执行。为包含完整语言编码，脚本绕过正常评估的语言缓存，每次重新执行文本编码器。
+
+​	默认使用 FP32；可通过 `--precision fp16` 或 `bf16` 测试混合精度，通过 `--warmup` 和 `--runs` 调整预热与测量次数。输出的每秒动作块预测次数由中位延迟换算，不代表机械臂实际控制频率。
+
+
+
+| 项目           | 你的 V1 / V2                  | TurboVLA LIBERO                           |
+| -------------- | ----------------------------- | ----------------------------------------- |
+| 训练数据       | 仅 Spatial，10 个任务         | Spatial、Object、Goal、Long，共 40 个任务 |
+| 数据处理       | 原始 HDF5，90% 训练、10% 验证 | 去除无效动作的 `no_noops` RLDS 数据       |
+| 图像尺寸       | 224×224，双相机               | 256×256，双相机                           |
+| 视觉编码器     | **CLIP ViT-B/16，冻结**       | **DINOv3 ViT-B，参与训练**                |
+| 语言编码器     | CLIP 文本编码器，冻结         | BERT，冻结                                |
+| 融合模块初始化 | 随机初始化；V1 无融合         | 从 **GroundingDINO** 加载相关预训练参数   |
+| 融合层数       | V1：0；V2：6                  | 6                                         |
+| 动作解码层数   | 4                             | 3                                         |
+| 动作预测长度   | 12                            | 12                                        |
+| 损失           | 前六维 Smooth L1 + 夹爪 BCE   | 七维动作的 masked L1                      |
+| 动作归一化     | 前六维均值／标准差            | 前六维 min/max 映射至 `[-1,1]`            |
+| 图像增强       | 平移 4 像素，颜色扰动 0.1     | 本地数据加载路径未见随机图像增强          |
+
+优化器和训练计划也不同：
+
+| 参数               | 你的 V1 / V2        | TurboVLA 官方方案                        |
+| ------------------ | ------------------- | ---------------------------------------- |
+| GPU 数量           | 单卡                | 4 卡                                     |
+| 每卡 batch         | 16                  | 8                                        |
+| 梯度累积           | 4                   | 4                                        |
+| **全局有效 batch** | **64**              | **128**                                  |
+| 总训练步数         | 20,000              | 40,000¹                                  |
+| 峰值学习率         | `1e-4`              | `5e-5`                                   |
+| Warmup             | 500 步              | 10,000 步                                |
+| Warmup 后学习率    | 余弦下降至约 `1e-5` | 保持峰值                                 |
+| Weight decay       | `1e-3`              | `1e-10`                                  |
+| AdamW betas        | `(0.9, 0.999)`      | `(0.9, 0.95)`                            |
+| EMA 参数滑动平均   | 无                  | 有，衰减系数 `0.999`                     |
+| 计算精度           | FP16 autocast       | 策略参数 FP32，DINOv3 使用 BF16 autocast |
+| 梯度裁剪           | 1.0                 | 1.0                                      |
+| 训练 seed          | 42                  | 42                                       |

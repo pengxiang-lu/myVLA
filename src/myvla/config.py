@@ -50,6 +50,7 @@ class TrainConfig:
     seed: int = 42
     image_shift: int = 0
     color_jitter: float = 0.0
+    ema_decay: float = 0.0  # Zero disables EMA; keeps legacy checkpoints compatible.
 
 
 @dataclass
@@ -132,6 +133,8 @@ class Config:
             raise ValueError("image_shift must be an integer in [0, image_size)")
         if not 0 <= t.color_jitter < 1:
             raise ValueError("color_jitter must be in [0, 1)")
+        if not 0 <= t.ema_decay < 1:
+            raise ValueError("ema_decay must be in [0, 1); 0 disables EMA")
         return self
 
     def to_dict(self):

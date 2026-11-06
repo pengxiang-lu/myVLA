@@ -8,7 +8,7 @@ model:
   hidden_dim: 256
   layers: 4
   heads: 8
-  chunk_size: 8
+  chunk_size: 12
   dropout: 0.1
   fusion_layers: 6
   state_dim: 8
@@ -37,5 +37,6 @@ train:
   save_every: 1000
   log_every: 20
   seed: 42
-  image_shift: 4
-  color_jitter: 0.1
+  image_shift: 0
+  color_jitter: 0.0
+  ema_decay: 0.999

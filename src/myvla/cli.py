@@ -181,6 +181,7 @@ def main(argv=None):
     p.add_argument("--image-size", type=int, default=224)
     p = commands.add_parser("eval-metaworld", help="Closed-loop MetaWorld MT50 evaluation")
     p.add_argument("--checkpoint", required=True)
+    p.add_argument("--weights", choices=["auto", "raw", "ema"], default="auto")
     p.add_argument("--output-dir", required=True)
     p.add_argument("--tasks", type=int, nargs="+")
     p.add_argument("--episodes", type=int, default=50)
@@ -194,6 +195,7 @@ def main(argv=None):
     add_train_arguments(p)
     p = commands.add_parser("eval", help="Closed-loop LIBERO simulator evaluation")
     p.add_argument("--checkpoint", required=True)
+    p.add_argument("--weights", choices=["auto", "raw", "ema"], default="auto")
     p.add_argument(
         "--suite",
         default="libero_spatial",
@@ -202,7 +204,7 @@ def main(argv=None):
     p.add_argument("--tasks", type=int, nargs="+")
     p.add_argument("--episodes", type=int, default=10)
     p.add_argument("--device", default="cuda")
-    p.add_argument("--execute-steps", type=int, default=4)
+    p.add_argument("--execute-steps", type=int, default=12)
     p.add_argument("--output-dir", required=True)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--horizon", type=int)
@@ -266,6 +268,7 @@ def main(argv=None):
             args.horizon,
             args.protocol,
             args.videos,
+            weights=args.weights,
         )
     elif args.command == "train":
         run_training(args, parser, trainer=train)
@@ -284,6 +287,7 @@ def main(argv=None):
             args.horizon,
             args.videos,
             args.libero_root,
+            weights=args.weights,
         )
     elif args.command == "download":
         from huggingface_hub import snapshot_download

@@ -109,6 +109,7 @@ def evaluate_metaworld(
     horizon=500,
     protocol="lerobot",
     videos=False,
+    weights="auto",
 ):
     if episodes < 1 or not 1 <= horizon <= 500:
         raise ValueError("episodes must be positive; horizon must be in [1,500]")
@@ -126,7 +127,7 @@ def evaluate_metaworld(
         raise FileExistsError(f"Evaluation output exists: {out}")
     device = resolve_device(device_name)
     seed_everything(seed)
-    policy, config, stats, payload = policy_from_checkpoint(checkpoint, device)
+    policy, config, stats, payload = policy_from_checkpoint(checkpoint, device, weights=weights)
     if config.data.dataset != "metaworld" or config.model.backend != "clip":
         raise ValueError("MetaWorld benchmark requires a real CLIP MT50 checkpoint")
     controller = MetaWorldController(policy, config, stats, device, execute_steps)
@@ -140,6 +141,7 @@ def evaluate_metaworld(
         "protocol": protocol,
         "checkpoint": str(Path(checkpoint).resolve()),
         "checkpoint_step": payload["step"],
+        "weights": payload["inference_weights"],
         "config": config.to_dict(),
         "seed": seed,
         "episodes_per_task": episodes,

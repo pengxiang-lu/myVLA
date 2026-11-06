@@ -159,12 +159,14 @@ def test_action_roundtrip_and_online_state():
 
 @pytest.mark.parametrize("augmentation", [False, True])
 @pytest.mark.parametrize("fusion_layers", [0, 2])
+@pytest.mark.parametrize("ema_decay", [0.0, 0.999])
 def test_resume_matches_uninterrupted_training(
-    config, monkeypatch, tmp_path, augmentation, fusion_layers
+    config, monkeypatch, tmp_path, augmentation, fusion_layers, ema_decay
 ):
     import myvla.train as training
 
     config.model.fusion_layers = fusion_layers
+    config.train.ema_decay = ema_decay
     if augmentation:
         config.train.image_shift = 2
         config.train.color_jitter = 0.1
@@ -189,15 +191,32 @@ def test_resume_matches_uninterrupted_training(
     assert resumed["step"] == 3
     for key, value in reference["head"].items():
         torch.testing.assert_close(resumed["head"][key], value, rtol=0, atol=0)
+    if ema_decay:
+        assert reference["ema_updates"] == resumed["ema_updates"] == 3
+        for key, value in reference["ema_head"].items():
+            torch.testing.assert_close(resumed["ema_head"][key], value, rtol=0, atol=0)
+        assert reference["validation_weights"] == "ema"
     assert reference["best_val"] == resumed["best_val"]
     policy, _, _, _ = policy_from_checkpoint(checkpoint, torch.device("cpu"))
     assert not policy.training
+    chosen = resumed["ema_head"] if ema_decay else resumed["head"]
+    for key, value in policy.head.state_dict().items():
+        torch.testing.assert_close(value, chosen[key], rtol=0, atol=0)
+    raw, _, _, _ = policy_from_checkpoint(checkpoint, torch.device("cpu"), weights="raw")
+    for key, value in raw.head.state_dict().items():
+        torch.testing.assert_close(value, resumed["head"][key], rtol=0, atol=0)
     with pytest.raises(FileExistsError):
         train(config)
     records = [
         json.loads(line) for line in (checkpoint.parent / "metrics.jsonl").read_text().splitlines()
     ]
     assert [r["step"] for r in records] == [1, 2, 3]
+    if ema_decay:
+        validations = [r for r in records if "val_loss" in r]
+        assert validations
+        for record in validations:
+            assert record["val_loss"] == record["ema_val_loss"]
+            assert "raw_val_loss" in record
 
 
 def test_augmentation_preserves_shape_range_and_inputs():

@@ -91,6 +91,7 @@ def evaluate(
     horizon=None,
     videos=False,
     libero_root=None,
+    weights="auto",
 ):
     if episodes < 1 or (horizon is not None and horizon < 1):
         raise ValueError("episodes and horizon must be positive")
@@ -104,7 +105,7 @@ def evaluate(
         raise RuntimeError("LIBERO simulator missing; run `uv sync --extra sim`") from exc
     device = resolve_device(device_name)
     seed_everything(seed)
-    policy, config, stats, payload = policy_from_checkpoint(checkpoint, device)
+    policy, config, stats, payload = policy_from_checkpoint(checkpoint, device, weights=weights)
     if config.data.dataset != "libero":
         raise ValueError("Use eval-metaworld for a MetaWorld checkpoint")
     if config.model.backend != "clip":
@@ -123,6 +124,7 @@ def evaluate(
     result = {
         "checkpoint": str(Path(checkpoint).resolve()),
         "checkpoint_step": payload["step"],
+        "weights": payload["inference_weights"],
         "suite": suite,
         "seed": seed,
         "episodes_per_task": episodes,
@@ -225,6 +227,7 @@ def main(argv=None):
         epilog="Relative checkpoint, output and LIBERO source paths use the project root.",
     )
     parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--weights", choices=["auto", "raw", "ema"], default="auto")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
         "--dataset",
@@ -242,7 +245,8 @@ def main(argv=None):
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument(
-        "--execute-steps", type=int, help="Actions per observation (default: LIBERO 4, MetaWorld 1)"
+        "--execute-steps", type=int,
+        help="Actions per observation (default: LIBERO 12, MetaWorld 1)",
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -268,12 +272,13 @@ def main(argv=None):
         parser.error("--protocol applies only to MetaWorld")
     common = {
         "checkpoint": args.checkpoint,
+        "weights": args.weights,
         "output": args.output_dir,
         "tasks": args.tasks,
         "episodes": args.episodes if args.episodes is not None else (50 if meta else 10),
         "device_name": args.device,
         "execute_steps": (
-            args.execute_steps if args.execute_steps is not None else (1 if meta else 4)
+            args.execute_steps if args.execute_steps is not None else (1 if meta else 12)
         ),
         "seed": args.seed,
         "horizon": args.horizon if args.horizon is not None else (500 if meta else None),

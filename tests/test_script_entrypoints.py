@@ -60,7 +60,7 @@ def test_train_script_from_another_directory(monkeypatch, tmp_path):
 @pytest.mark.parametrize(
     "dataset,episodes,execute,horizon",
     [
-        ("libero", 10, 4, None),
+        ("libero", 10, 12, None),
         ("metaworld", 50, 1, 500),
     ],
 )

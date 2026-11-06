@@ -20,6 +20,7 @@ from torch.utils.data import DataLoader, Sampler
 
 from .config import from_dict, load_config
 from .data import RobotDataset, compute_stats, manifest, scan_episodes
+from .ema import HeadEMA
 from .model import Policy, action_loss
 from .preprocess import augment_images
 
@@ -146,7 +147,7 @@ def restore_rng(state):
 
 
 def save_checkpoint(
-    path, policy, optimizer, scheduler, scaler, config, stats, episodes, step, best
+    path, policy, optimizer, scheduler, scaler, config, stats, episodes, step, best, ema=None
 ):
     payload = {
         "format_version": 1,
@@ -160,7 +161,11 @@ def save_checkpoint(
         "scheduler": scheduler.state_dict(),
         "scaler": scaler.state_dict(),
         "rng": rng_state(),
+        "validation_weights": "ema" if ema is not None else "raw",
     }
+    if ema is not None:
+        payload["ema_head"] = ema.module.state_dict()
+        payload["ema_updates"] = ema.updates
     # Real CLIP is referenced by pinned revision; random smoke weights must be retained.
     if config.model.backend == "tiny":
         payload["tiny_backbone"] = policy.backbone.state_dict()
@@ -176,11 +181,24 @@ def load_checkpoint(path):
     return payload
 
 
-def policy_from_checkpoint(path, device):
+def checkpoint_head(payload, weights="auto"):
+    if weights not in {"auto", "raw", "ema"}:
+        raise ValueError("weights must be auto, raw or ema")
+    selected = "ema" if weights == "auto" and "ema_head" in payload else weights
+    if selected == "ema":
+        if "ema_head" not in payload:
+            raise ValueError("Checkpoint has no EMA weights; use --weights raw or auto")
+        return payload["ema_head"], "ema"
+    return payload["head"], "raw"
+
+
+def policy_from_checkpoint(path, device, weights="auto"):
     payload = load_checkpoint(path)
     config = from_dict(payload["config"])
     policy = Policy(config.model)
-    policy.head.load_state_dict(payload["head"], strict=True)
+    head, selected = checkpoint_head(payload, weights)
+    policy.head.load_state_dict(head, strict=True)
+    payload["inference_weights"] = selected
     if config.model.backend == "tiny":
         policy.backbone.load_state_dict(payload["tiny_backbone"], strict=True)
     policy.to(device).eval()
@@ -243,7 +261,8 @@ def train(config, resume=None, init_checkpoint=None):
         for key, value in stats.items():
             if not np.array_equal(value, np.asarray(initial["stats"][key], np.float32)):
                 raise ValueError("Initialization normalization differs from checkpoint")
-        incompatible = policy.head.load_state_dict(initial["head"], strict=not adding_fusion)
+        initial_head, initial_weights = checkpoint_head(initial)
+        incompatible = policy.head.load_state_dict(initial_head, strict=not adding_fusion)
         if adding_fusion and (
             incompatible.unexpected_keys
             or any(not key.startswith("fusion.") for key in incompatible.missing_keys)
@@ -257,6 +276,7 @@ def train(config, resume=None, init_checkpoint=None):
                     "checkpoint": str(Path(init_checkpoint).resolve()),
                     "checkpoint_step": initial["step"],
                     "optimizer_reset": True,
+                    "weights": initial_weights,
                     "added_fusion_layers": config.model.fusion_layers if adding_fusion else 0,
                 },
                 indent=2,
@@ -281,6 +301,12 @@ def train(config, resume=None, init_checkpoint=None):
         scheduler.load_state_dict(saved["scheduler"])
         scaler.load_state_dict(saved["scaler"])
         start, best = saved["step"], saved["best_val"]
+    ema = HeadEMA(policy.head, t.ema_decay) if t.ema_decay else None
+    if saved and ema is not None:
+        if "ema_head" not in saved or "ema_updates" not in saved:
+            raise ValueError("EMA resume requires saved EMA weights and update count")
+        ema.module.load_state_dict(saved["ema_head"], strict=True)
+        ema.updates = saved["ema_updates"]
     if start >= t.steps:
         raise ValueError("Checkpoint already reached configured training steps")
     sampler = StepSampler(
@@ -351,6 +377,8 @@ def train(config, resume=None, init_checkpoint=None):
             skipped = scaler.get_scale() < previous_scale
             if not skipped:
                 scheduler.step()
+                if ema is not None:
+                    ema.update(policy.head)
             record = {
                 "step": step,
                 "loss": train_loss,
@@ -363,6 +391,13 @@ def train(config, resume=None, init_checkpoint=None):
                 record["val_loss"] = validate(
                     policy, val_loader, device, t.precision, t.validation_batches
                 )
+                if ema is not None:
+                    record["raw_val_loss"] = record["val_loss"]
+                    with ema.apply(policy):
+                        record["ema_val_loss"] = validate(
+                            policy, val_loader, device, t.precision, t.validation_batches
+                        )
+                    record["val_loss"] = record["ema_val_loss"]
                 improved = record["val_loss"] < best
                 if improved:
                     best = record["val_loss"]
@@ -385,6 +420,7 @@ def train(config, resume=None, init_checkpoint=None):
                     episodes,
                     step,
                     best,
+                    ema=ema,
                 )
             if step % t.save_every == 0 or step == t.steps:
                 save_checkpoint(
@@ -398,6 +434,7 @@ def train(config, resume=None, init_checkpoint=None):
                     episodes,
                     step,
                     best,
+                    ema=ema,
                 )
             if "val_loss" in record:
                 log.flush()
