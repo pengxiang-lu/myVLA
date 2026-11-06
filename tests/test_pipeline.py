@@ -265,6 +265,96 @@ def test_resume_matches_uninterrupted_training(
             assert "raw_val_loss" in record
 
 
+@pytest.mark.parametrize(
+    ("fusion_layers", "train_vision", "legacy"), [(0, False, True), (2, False, False),
+                                               (2, True, False)],
+)
+def test_extend_completed_run_preserves_optimizer_ema_and_original_lr_schedule(
+    config, monkeypatch, tmp_path, fusion_layers, train_vision, legacy
+):
+    import myvla.train as training
+
+    # Keep this integration test focused on training state, not plotting.
+    monkeypatch.setattr(training, "plot_loss", lambda _: None)
+    config.model.fusion_layers = fusion_layers
+    config.model.train_vision_encoder = train_vision
+    config.train.ema_decay = 0.9
+    config.train.vision_lr = 1e-5 if train_vision else None
+    initial_path = train(config)
+    original = load_checkpoint(initial_path)
+    assert original["step"] == 3
+    if legacy:
+        original.pop("lr_schedule_steps")
+        torch.save(original, initial_path)
+
+    config.train.steps = 7
+    config.train.output_dir = str(tmp_path / "extended_reference")
+    reference = load_checkpoint(train(config, resume=initial_path))
+    assert reference["lr_schedule_steps"] == 3
+    assert reference["config"]["train"]["steps"] == 7
+    assert reference["ema_updates"] == 7
+    assert reference["optimizer"]["param_groups"][0]["lr"] == pytest.approx(config.train.lr * 0.1)
+    if train_vision:
+        assert reference["optimizer"]["param_groups"][1]["lr"] == pytest.approx(1e-6)
+    for state in reference["optimizer"]["state"].values():
+        assert state["step"].item() == 7
+
+    config.train.output_dir = str(tmp_path / "extended_interrupted")
+    original_save = training.save_checkpoint
+
+    def stop_after_first_extended_step(path, *args, **kwargs):
+        original_save(path, *args, **kwargs)
+        if path.name == "latest.pt":
+            raise InterruptedError("Stop at step 4")
+
+    with monkeypatch.context() as context:
+        context.setattr(training, "save_checkpoint", stop_after_first_extended_step)
+        with pytest.raises(InterruptedError):
+            train(config, resume=initial_path)
+    checkpoint = tmp_path / "extended_interrupted/latest.pt"
+    assert load_checkpoint(checkpoint)["step"] == 4
+    train(config, resume=checkpoint)
+    resumed = load_checkpoint(checkpoint)
+
+    def assert_identical(actual, expected):
+        if isinstance(expected, torch.Tensor):
+            torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+        elif isinstance(expected, dict):
+            assert actual.keys() == expected.keys()
+            for key in expected:
+                assert_identical(actual[key], expected[key])
+        elif isinstance(expected, (list, tuple)):
+            assert len(actual) == len(expected)
+            for a, b in zip(actual, expected):
+                assert_identical(a, b)
+        else:
+            assert actual == expected
+
+    for key in ("head", "ema_head", "optimizer", "scheduler", "rng", "best_val"):
+        assert_identical(resumed[key], reference[key])
+    if train_vision:
+        for key in ("vision", "ema_vision"):
+            assert_identical(resumed[key], reference[key])
+    records = [json.loads(line) for line in (checkpoint.parent / "metrics.jsonl")
+               .read_text().splitlines()]
+    assert [r["step"] for r in records] == [4, 5, 6, 7]
+    # A second extension must still retain the original three-step LR horizon.
+    config.train.steps = 9
+    train(config, resume=checkpoint)
+    repeated = load_checkpoint(checkpoint)
+    assert repeated["lr_schedule_steps"] == 3
+    assert repeated["step"] == repeated["ema_updates"] == 9
+    # Reducing a previously saved target remains disallowed.
+    config.train.steps = 7
+    with pytest.raises(ValueError, match="cannot reduce"):
+        train(config, resume=checkpoint)
+    # A completed run rejects unrelated hyperparameter changes, even when extended.
+    config.train.steps = 10
+    config.train.lr *= 2
+    with pytest.raises(ValueError, match="Resume config/data differs"):
+        train(config, resume=checkpoint)
+
+
 def test_augmentation_preserves_shape_range_and_inputs():
     pixels = torch.rand(2, 2, 3, 16, 16)
     images = (pixels - CLIP_MEAN) / CLIP_STD

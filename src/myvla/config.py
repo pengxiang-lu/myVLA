@@ -69,9 +69,12 @@ class Config:
             return self
         meta = dataset == "metaworld"
         suite = "metaworld_mt50" if meta else "libero_spatial"
-        model_version = (
-            "v3" if self.model.train_vision_encoder else "v2" if self.model.fusion_layers else "v1"
-        )
+        if self.model.train_vision_encoder:
+            model_version = "v3"
+        elif self.model.fusion_layers == 2:
+            model_version = "v2_1"
+        else:
+            model_version = "v2" if self.model.fusion_layers else "v1"
         return replace(
             self,
             model=replace(

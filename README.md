@@ -4,9 +4,9 @@
 
 　　**myVLA 是一个基于 PyTorch 的轻量视觉—语言—动作（VLA）项目**，支持 LIBERO 和 MetaWorld MT50 上的行为克隆训练与闭环评估。模型使用预训练 CLIP 编码图像和语言，通过可训练的动作解码器预测连续动作块。V1、V2 冻结两个编码器；V3 联合训练视觉编码器，语言编码器保持冻结。
 
-　　项目包含 V1 基础版、V2 双向融合版和 V3 视觉联合训练版。V2、V3 在动作解码前增加视觉—语言交叉注意力，当前训练配置使用 6 层双向融合块，动作解码器为 4 层。下图展示 V2 的结构，图中的层数对应早期 2 层融合版本。
+　　项目包含 V1 基础版、V2 双向融合版和 V3 视觉联合训练版。V2 分为 V2.0（6 层双向融合）和 V2.1（2 层双向融合），两者均冻结 CLIP。V3 沿用 V2.1 的 2 层融合并解冻视觉编码器。动作解码器均为 4 层，输出 12×7 动作块。下图展示 V2.0 的结构。
 
-![myVLA V2 模型架构](assets/v2.png)
+![myVLA V2.0 模型架构](assets/v2.png)
 
 ## 二、安装教程
 
@@ -81,7 +81,7 @@ uv run src/myvla/train.py \
   --steps 20000 --output-dir outputs/train/libero_spatial_v1
 ```
 
-　　V2 使用双向融合配置开始独立训练，不加载 V1 动作头。V1、V2 配置分别为 `configs/train_cfg_v1.yaml` 和 `configs/train_cfg_v2.yaml`，均默认训练 20,000 步：
+　　V2.0 使用 6 层双向融合配置开始独立训练，不加载 V1 动作头。V1、V2 配置分别为 `configs/train_cfg_v1.yaml` 和 `configs/train_cfg_v2.yaml`，均默认训练 20,000 步：
 
 ```bash
 uv run src/myvla/train.py \
@@ -89,16 +89,23 @@ uv run src/myvla/train.py \
   --steps 20000 --output-dir outputs/train/libero_spatial_v2
 ```
 
-　　两份配置的学习率、数据增强、batch、梯度累积及训练计划一致，仅融合层数和默认输出目录不同。先检查流程时，可将步数改为 `--steps 200` 并使用单独输出目录。训练步数按优化器更新尝试计数，不是 epoch。
+　　V2.1 将交叉注意力融合块改为 2 层，其余训练设置与 V2.0 一致，默认输出到独立目录 `outputs/train/libero_spatial_v2_1`：
 
-　　V3 在 V2 六层融合结构上设置 `model.train_vision_encoder: true`，联合训练 CLIP 视觉编码器、融合层和动作头；文本编码器及 CLIP 原始对比学习投影层保持冻结。从预训练 CLIP 和随机动作头开始独立训练：
+```bash
+HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
+  --config configs/train_cfg_v2_1.yaml
+```
+
+　　V2.0 保留原来的 `train_cfg_v2.yaml` 和 `libero_spatial_v2` 路径。两个版本的融合参数形状不同，不能互相 `--resume`，也不能直接通过现有 `--init-checkpoint` 在 6 层和 2 层之间转换。评估时从 checkpoint 自动恢复融合层数。
+
+　　V3 在 V2.1 两层融合结构上设置 `model.train_vision_encoder: true`，联合训练 CLIP 视觉编码器、融合层和动作头；文本编码器及 CLIP 原始对比学习投影层保持冻结。从预训练 CLIP 和随机动作头开始独立训练：
 
 ```bash
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
   --config configs/train_cfg_v3.yaml
 ```
 
-　　V3 默认输出到 `outputs/train/libero_spatial_v3`，预测 12 步，无图像增强，启用 EMA。视觉编码器峰值学习率 `vision_lr: 1e-5`，动作头及融合层 `lr: 1e-4`，两者使用相同的 warmup 和余弦衰减计划。为控制激活显存，batch=2、梯度累积=32，有效 batch 仍为 64；验证使用 400 个 batch，仍覆盖固定 800 帧。视觉梯度、优化器状态和 EMA 会增加显存及 checkpoint 大小，实际 GPU 容量需以运行结果为准。
+　
 
 　　评估、推理测速和恢复训练沿用原命令，将 checkpoint 路径改为 V3 对应文件即可。V3 checkpoint 同时保存训练后的原始视觉权重及 EMA 视觉权重，`--weights raw` / `ema` 会为视觉编码器与动作头选择匹配的一套权重。直接加载 V1/V2 checkpoint 的 `--resume` 不能切换为 V3。
 
@@ -127,7 +134,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 
 ### 3.4 参数设置与断点恢复
 
-　　查看训练参数使用 `uv run src/myvla/train.py --help`。两份配置默认使用 LIBERO-Spatial，输出分别为 `outputs/train/libero_spatial_v1` 和 `outputs/train/libero_spatial_v2`；命令行 `--output-dir` 可以覆盖。主要训练参数在 YAML 中设置：`lr` 为学习率，`steps` 为总步数，`batch_size` 为单批样本数，`grad_accumulation` 为梯度累积次数。单卡有效 batch 为两者之积；`image_shift` 和 `color_jitter` 控制训练期间的图像增强。
+　　查看训练参数使用 `uv run src/myvla/train.py --help`。两
 
 　　训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。训练目录保存 `latest.pt`、`best.pt` 和 `metrics.jsonl` 等文件。`latest.pt` 用于恢复训练，`best.pt` 对应最低离线验证 loss；只会恢复到已保存的步数。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
 
@@ -149,7 +156,18 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
   --resume outputs/train/metaworld_mt50_v2/latest.pt
 ```
 
-　　`--resume` 恢复完整训练状态，要求架构、数据和训练计划等保持一致；`--init-checkpoint` 用于加载权重开始新的微调，并重置优化器，两者不能同时使用。已有输出目录会被保护，重新训练请设置新的 `--output-dir`。
+　　`--resume` 恢复原始参数、优化器、学习率调度器、AMP scaler、随机状态和 EMA，要求架构、数据及其他训练超参数保持一致。可以通过 `--steps` 增大总训练目标；该值是累计步数，不是追加步数，也不能小于 checkpoint 中保存的总目标。原学习率计划保持不变：不重新 warmup、不拉长原余弦曲线，衰减结束后维持原计划的末值。当前配置动作头末值约为 `1e-5`，V3 视觉编码器末值约为 `1e-6`。若曾因 AMP 溢出跳过更新，调度器会继续其尚未完成的原计划，再保持末值。
+
+```bash
+# 已完成 20,000 步，再追加 20,000 步；从 latest 保存的步数继续到累计 40,000 步
+HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
+  --resume outputs/train/libero_spatial_v2/latest.pt \
+  --steps 40000
+```
+
+　　V1/V3 使用对应版本的 `latest.pt` 即可，无需修改 YAML 或传 `--config`。默认继续写入原目录，训练日志步数不会归零；`best.pt` 仍按整个训练过程最低验证 loss 选择，未改善时会保留原来的 best。checkpoint 额外保存 `lr_schedule_steps`，多次延长目标时仍保留最初的学习率计划。旧 checkpoint 没有该字段时，使用它保存的总步数作为原计划长度。
+
+　　`--init-checkpoint` 用于加载权重开始新的微调，并重置优化器，两者不能同时使用。已有输出目录会被保护，重新训练请设置新的 `--output-dir`。
 
 ## 四、评估
 
@@ -163,11 +181,18 @@ export LIBERO_ROOT=/home/lpx/python-project/LIBERO
 
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
   --checkpoint outputs/train/libero_spatial_v1/best.pt \
-  --suite libero_spatial --episodes 10 --execute-steps 4 \
+  --suite libero_spatial --episodes 10 --execute-steps 12 \
   --output-dir outputs/eval/libero_spatial_v1
 ```
 
-　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--videos` 保存视频。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，每次执行 4 步预测动作后重新观察。
+　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--videos` 保存视频。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，默认每次执行完整 12 步预测动作后重新观察；使用旧的 8 步 checkpoint 时，需显式设置 `--execute-steps 8` 或更小的值。
+
+​	由于训练好的权重里面用EMA 权重和原始权重，默认使用EMA权重，如果需要显式指定使用的权重类型可以在脚本后面添加下面参数来指定：
+
+```
+--weights ema   # 使用 EMA 权重
+--weights raw   # 使用原始权重
+```
 
 ### 4.2 MetaWorld MT50 闭环评估
 
@@ -222,7 +247,7 @@ HF_HUB_OFFLINE=1 uv run scripts/measure_inference_time.py \
 | 视觉编码器     | **CLIP ViT-B/16，冻结**       | **DINOv3 ViT-B，参与训练**                |
 | 语言编码器     | CLIP 文本编码器，冻结         | BERT，冻结                                |
 | 融合模块初始化 | 随机初始化；V1 无融合         | 从 **GroundingDINO** 加载相关预训练参数   |
-| 融合层数       | V1：0；V2：6                  | 6                                         |
+| 融合层数       | V1：0；V2.0：6；V2.1：2                  | 6                                         |
 | 动作解码层数   | 4                             | 3                                         |
 | 动作预测长度   | 12                            | 12                                        |
 | 损失           | 前六维 Smooth L1 + 夹爪 BCE   | 七维动作的 masked L1                      |

@@ -4,12 +4,14 @@ from pathlib import Path
 
 import h5py
 import matplotlib
+import yaml
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, Rectangle
 
 ROOT = Path(__file__).resolve().parents[1]
+MODEL = yaml.safe_load((ROOT / "configs/train_cfg_v1.yaml").read_text())["model"]
 OUT = ROOT / "assets"
 OUT.mkdir(exist_ok=True)
 plt.rcParams.update({"font.family": "DejaVu Sans", "svg.fonttype": "none"})
@@ -96,26 +98,31 @@ arrow([(11.05, 2.18), (11.7, 2.18), (11.7, 3.15), (12.35, 3.15)], green)
 box(12.15, 5.25, 2.75, 0.85, "State MLP", violet, "#f5f1fa", size=16)
 arrow([(13.53, 5.25), (13.53, 4.65)], violet)
 
-box(15.65, 2.6, 3.05, 2.15, "Action\nDecoder\n× 4", orange, "#fff5e9", size=19)
+box(
+    15.65, 2.6, 3.05, 2.15,
+    f"Action\nDecoder\n× {MODEL['layers']}", orange, "#fff5e9", size=19,
+)
 arrow([(14.7, 3.67), (15.65, 3.67)])
 box(15.65, 5.25, 3.05, 0.85, "Action Queries", orange, "#fff5e9", size=16)
 arrow([(17.18, 5.25), (17.18, 4.75)], orange)
 arrow([(18.7, 3.67), (19.5, 3.67)], orange)
 
-for i in range(8):
+chunk_size = MODEL["chunk_size"]
+bar_step = 2.0 / chunk_size
+for i in range(chunk_size):
     ax.add_patch(
         Rectangle(
-            (19.55 + i * 0.25, 3.18),
-            0.21,
+            (19.55 + i * bar_step, 3.18),
+            bar_step * 0.84,
             1.0,
             facecolor=orange,
-            alpha=0.35 + 0.07 * i,
+            alpha=0.35 + 0.6 * i / max(chunk_size - 1, 1),
             edgecolor="white",
             lw=0.7,
         )
     )
 text(20.5, 4.65, "Action Chunk", 17, bold=True)
-text(20.5, 2.75, "8 × 7", 22, bold=True)
+text(20.5, 2.75, f"{chunk_size} × {MODEL['action_dim']}", 22, bold=True)
 
 # Minimal legend and scope; implementation detail stays in the model-history document.
 ax.plot([0.4, 21.55], [0.95, 0.95], color="#d7e0e8", lw=1)

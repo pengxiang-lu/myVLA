@@ -1,15 +1,22 @@
 """Draw a compact, large-label overview of the implemented LIBERO V2 policy."""
 
+import argparse
 from pathlib import Path
 
 import h5py
 import matplotlib
+import yaml
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, Rectangle
 
 ROOT = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--version", choices=["v2_0", "v2_1"], default="v2_0")
+args = parser.parse_args()
+suffix = "v2" if args.version == "v2_0" else "v2_1"
+MODEL = yaml.safe_load((ROOT / f"configs/train_cfg_{suffix}.yaml").read_text())["model"]
 OUT = ROOT / "assets"
 OUT.mkdir(exist_ok=True)
 plt.rcParams.update({"font.family": "DejaVu Sans", "svg.fonttype": "none"})
@@ -68,7 +75,7 @@ def arrow(points, color=ink):
     )
 
 
-text(11, 6.7, "myVLA V2", 24, bold=True)
+text(11, 6.7, f"myVLA {args.version.upper().replace('_', '.')}", 24, bold=True)
 path = next(iter(sorted((ROOT / "data/libero_spatial").glob("*_demo.hdf5"))))
 with h5py.File(path) as f:
     demo = next(iter(f["data"]))
@@ -85,7 +92,10 @@ text(5.2, 5.72, "Frozen", 14, muted)
 arrow([(2.9, 4.68), (3.65, 4.68)], blue)
 arrow([(2.9, 2.18), (3.65, 2.18)], green)
 
-box(8.0, 2.35, 3.45, 2.65, "Bidirectional\nCross-Attention\n× 2", blue, "#eef5fc", size=19)
+box(
+    8.0, 2.35, 3.45, 2.65,
+    f"Bidirectional\nCross-Attention\n× {MODEL['fusion_layers']}", blue, "#eef5fc", size=19,
+)
 arrow([(6.75, 4.68), (8.0, 4.68)], blue)
 arrow([(6.75, 2.18), (7.35, 2.18), (7.35, 2.7), (8.0, 2.7)], green)
 text(9.73, 1.93, "Vision ↔ Language", 15, blue)
@@ -95,26 +105,31 @@ arrow([(11.45, 3.67), (12.35, 3.67)])
 box(12.15, 5.25, 2.75, 0.85, "State MLP", violet, "#f5f1fa", size=16)
 arrow([(13.53, 5.25), (13.53, 4.65)], violet)
 
-box(15.65, 2.6, 3.05, 2.15, "Action\nDecoder\n× 4", orange, "#fff5e9", size=19)
+box(
+    15.65, 2.6, 3.05, 2.15,
+    f"Action\nDecoder\n× {MODEL['layers']}", orange, "#fff5e9", size=19,
+)
 arrow([(14.7, 3.67), (15.65, 3.67)])
 box(15.65, 5.25, 3.05, 0.85, "Action Queries", orange, "#fff5e9", size=16)
 arrow([(17.18, 5.25), (17.18, 4.75)], orange)
 arrow([(18.7, 3.67), (19.5, 3.67)], orange)
 
-for i in range(8):
+chunk_size = MODEL["chunk_size"]
+bar_step = 2.0 / chunk_size
+for i in range(chunk_size):
     ax.add_patch(
         Rectangle(
-            (19.55 + i * 0.25, 3.18),
-            0.21,
+            (19.55 + i * bar_step, 3.18),
+            bar_step * 0.84,
             1.0,
             facecolor=orange,
-            alpha=0.35 + 0.07 * i,
+            alpha=0.35 + 0.6 * i / max(chunk_size - 1, 1),
             edgecolor="white",
             lw=0.7,
         )
     )
 text(20.5, 4.65, "Action Chunk", 17, bold=True)
-text(20.5, 2.75, "8 × 7", 22, bold=True)
+text(20.5, 2.75, f"{chunk_size} × {MODEL['action_dim']}", 22, bold=True)
 
 # Minimal legend and scope; implementation detail stays in the model-history document.
 ax.plot([0.4, 21.55], [0.95, 0.95], color="#d7e0e8", lw=1)
@@ -126,6 +141,6 @@ ax.add_patch(Rectangle((8.4, 0.32), 0.26, 0.26, facecolor="#eef5fc", edgecolor=b
 text(10.15, 0.46, "Trainable", 14, muted)
 text(15.9, 0.46, "LIBERO-Spatial", 14, muted)
 
-output = OUT / "v2.png"
+output = OUT / f"{suffix}.png"
 fig.savefig(output, dpi=240, bbox_inches="tight", pad_inches=0.1, facecolor="white")
 print(output)

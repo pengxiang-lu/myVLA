@@ -147,7 +147,8 @@ def restore_rng(state):
 
 
 def save_checkpoint(
-    path, policy, optimizer, scheduler, scaler, config, stats, episodes, step, best, ema=None
+    path, policy, optimizer, scheduler, scaler, config, stats, episodes, step, best, ema=None,
+    lr_schedule_steps=None,
 ):
     payload = {
         "format_version": 1,
@@ -162,6 +163,9 @@ def save_checkpoint(
         "scaler": scaler.state_dict(),
         "rng": rng_state(),
         "validation_weights": "ema" if ema is not None else "raw",
+        "lr_schedule_steps": (
+            config.train.steps if lr_schedule_steps is None else lr_schedule_steps
+        ),
     }
     if ema is not None:
         payload["ema_head"] = ema.module.state_dict()
@@ -240,6 +244,7 @@ def train(config, resume=None, init_checkpoint=None):
     saved = load_checkpoint(resume) if resume else None
     initial = load_checkpoint(init_checkpoint) if init_checkpoint else None
     adding_fusion = False
+    lr_schedule_steps = t.steps
     if initial:
         old = from_dict(initial["config"])
         config.model.revision = old.model.revision
@@ -254,7 +259,12 @@ def train(config, resume=None, init_checkpoint=None):
             raise ValueError("Initialization requires the same model and dataset split")
     if saved:
         old = from_dict(saved["config"])
-        # Output/device/worker count can change; architecture, schedule and data cannot.
+        # Extend the stopping step while preserving the original learning-rate horizon.
+        lr_schedule_steps = saved.get("lr_schedule_steps", old.train.steps)
+        if t.steps < old.train.steps:
+            raise ValueError("Resume cannot reduce the configured training steps")
+        old.train.steps = t.steps
+        # Output/device/worker count can change; other training settings must match.
         for key in ("output_dir", "device", "workers", "log_every"):
             setattr(old.train, key, getattr(t, key))
         # Accept a requested branch only if the rest matches; load the saved immutable commit.
@@ -308,7 +318,7 @@ def train(config, resume=None, init_checkpoint=None):
     def lr_scale(step):
         if step < t.warmup_steps:
             return (step + 1) / max(t.warmup_steps, 1)
-        progress = min(1, (step - t.warmup_steps) / max(1, t.steps - t.warmup_steps))
+        progress = min(1, (step - t.warmup_steps) / max(1, lr_schedule_steps - t.warmup_steps))
         return 0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * progress))
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_scale)
@@ -374,6 +384,9 @@ def train(config, resume=None, init_checkpoint=None):
                 "device": str(device),
                 "trainable_parameters": sum(p.numel() for p in trainable),
                 "train_vision_encoder": config.model.train_vision_encoder,
+                "start_step": start,
+                "target_steps": t.steps,
+                "lr_schedule_steps": lr_schedule_steps,
                 "backend": config.model.backend,
             }
         ),
@@ -451,6 +464,7 @@ def train(config, resume=None, init_checkpoint=None):
                     step,
                     best,
                     ema=ema,
+                    lr_schedule_steps=lr_schedule_steps,
                 )
             if step % t.save_every == 0 or step == t.steps:
                 save_checkpoint(
@@ -465,6 +479,7 @@ def train(config, resume=None, init_checkpoint=None):
                     step,
                     best,
                     ema=ema,
+                    lr_schedule_steps=lr_schedule_steps,
                 )
             if "val_loss" in record:
                 log.flush()
@@ -483,7 +498,10 @@ def add_train_arguments(parser):
     parser.add_argument("--resume")
     parser.add_argument("--init-checkpoint", help="Initialize weights for a new fine-tuning run")
     parser.add_argument("--device")
-    parser.add_argument("--steps", type=int)
+    parser.add_argument(
+        "--steps", type=int,
+        help="Total target steps; resume may extend this without restarting the LR schedule",
+    )
     parser.add_argument("--workers", type=int)
     parser.add_argument("--output-dir")
 

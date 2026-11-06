@@ -1,4 +1,4 @@
-# V2: LIBERO-Spatial by default; use --dataset metaworld for MT50.
+# V2.0: six fusion layers; LIBERO-Spatial by default.
 # Run commands from the project root.
 model:
   backbone: models/clip-vit-base-patch16

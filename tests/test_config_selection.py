@@ -9,7 +9,7 @@ from myvla.config import load_config
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 
 
-@pytest.mark.parametrize("version", ["v1", "v2", "v3"])
+@pytest.mark.parametrize("version", ["v1", "v2", "v2_1", "v3"])
 def test_dataset_selection_preserves_architecture_and_training(version):
     original = load_config(CONFIGS / f"train_cfg_{version}.yaml")
     meta = original.for_dataset("metaworld")
