@@ -78,7 +78,7 @@ def smoke(output):
             chunk_size=8,
             dropout=0.1,
         ),
-        DataConfig(directory=str(out / "synthetic_data"), val_fraction=0.25),
+        DataConfig(directory=str(out / "synthetic_data")),
         TrainConfig(
             output_dir=str(out / "training"),
             device="cpu",
@@ -88,8 +88,6 @@ def smoke(output):
             workers=0,
             steps=3,
             warmup_steps=1,
-            validate_every=2,
-            validation_batches=2,
             save_every=1,
             log_every=1,
         ),

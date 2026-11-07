@@ -88,27 +88,22 @@ def mt50_config(raw_mt50, tmp_path):
             steps=2,
             workers=0,
             warmup_steps=1,
-            validate_every=1,
-            validation_batches=2,
             save_every=1,
             log_every=1,
         ),
     ).validate()
 
 
-def test_mt50_import_split_stats_and_windows(mt50_config):
+def test_mt50_import_all_training_stats_and_windows(mt50_config):
     config = mt50_config
     episodes = scan_episodes(config.data, 42)
     assert len(episodes) == 6
-    assert sum(e.split == "val" for e in episodes) == 2
+    assert all(e.split == "train" for e in episodes)
     stats = compute_stats(episodes, "metaworld")
     state_values = []
     for ep in episodes:
         with h5py.File(ep.path, "r+") as f:
-            if ep.split == "train":
-                state_values.extend(f[f"data/{ep.demo}/obs/state"][:])
-            else:
-                f[f"data/{ep.demo}/obs/state"][:] = 1e5
+            state_values.extend(f[f"data/{ep.demo}/obs/state"][:])
     np.testing.assert_allclose(stats["state_mean"], np.mean(state_values, axis=0, dtype=np.float64))
     for key, value in compute_stats(episodes, "metaworld").items():
         np.testing.assert_array_equal(value, stats[key])

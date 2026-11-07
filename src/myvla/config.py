@@ -26,7 +26,6 @@ class ModelConfig:
 class DataConfig:
     directory: str = "data/libero_spatial"
     pattern: str = "*_demo.hdf5"
-    val_fraction: float = 0.1
     flip_vertical: bool = True
     dataset: str = "libero"
 
@@ -44,8 +43,6 @@ class TrainConfig:
     weight_decay: float = 1e-4
     warmup_steps: int = 500
     grad_clip: float = 1.0
-    validate_every: int = 500
-    validation_batches: int = 100
     save_every: int = 1000
     log_every: int = 20
     seed: int = 42
@@ -118,15 +115,11 @@ class Config:
             raise ValueError("This CLIP baseline requires image_size=224")
         if m.backend == "tiny" and m.image_size % 4:
             raise ValueError("Tiny CLIP image_size must be divisible by 4")
-        if not 0 < d.val_fraction < 1:
-            raise ValueError("val_fraction must be between 0 and 1")
         if (
             min(
                 t.batch_size,
                 t.grad_accumulation,
                 t.steps,
-                t.validate_every,
-                t.validation_batches,
                 t.save_every,
                 t.log_every,
             )
@@ -156,10 +149,16 @@ def from_dict(raw):
     unknown = set(raw) - {"model", "data", "train"}
     if unknown:
         raise ValueError(f"Unknown config sections: {unknown}")
+    # Older configs/checkpoints remain readable; training now uses every trajectory.
+    data = dict(raw.get("data", {}))
+    train = dict(raw.get("train", {}))
+    data.pop("val_fraction", None)
+    train.pop("validate_every", None)
+    train.pop("validation_batches", None)
     return Config(
         ModelConfig(**raw.get("model", {})),
-        DataConfig(**raw.get("data", {})),
-        TrainConfig(**raw.get("train", {})),
+        DataConfig(**data),
+        TrainConfig(**train),
     ).validate()
 
 

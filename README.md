@@ -106,7 +106,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 
 ### 3.4 参数设置与断点恢复
 
-​	训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。训练目录保存 `latest.pt`、`best.pt` 和 `metrics.jsonl` 等文件。`latest.pt` 用于恢复训练，`best.pt` 对应最低离线验证 loss；只会恢复到已保存的步数。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
+​	训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。所有演示均参与训练，不划分验证集、不计算验证 loss，也不自动启动仿真评估。训练目录保存 `latest.pt`、`metrics.jsonl` 和训练损失图 `loss_curve.png` 等文件；按 `save_every` 间隔及训练结束保存 `latest.pt`，其中包含 RAW 和已启用的 EMA 权重。新训练不再生成 `best.pt`；历史文件保留。`latest.pt` 用于恢复训练，只会恢复到已保存的步数。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
 
 　　若要从已有权重开始 EMA 微调，需使用开启 EMA 的配置和 `--init-checkpoint`，并指定新的输出目录；该操作重置优化器和 EMA 更新次数。有 EMA 的初始化 checkpoint 默认使用 EMA 权重作为微调起点。
 
@@ -131,7 +131,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
   --steps 40000
 ```
 
-　　`--init-checkpoint` 用于加载权重开始新的微调，并重置优化器，两者不能同时使用。已有输出目录会被保护，重新训练请设置新的 `--output-dir`。
+　　`--init-checkpoint` 用于加载权重开始新的微调，并重置优化器，两者不能同时使用。已有输出目录会被保护，重新训练请设置新的 `--output-dir`。旧 checkpoint 仍可用于推理、初始化或续训；旧配置中的验证字段会被忽略。续训会将原验证轨迹纳入训练，并保留 checkpoint 的归一化统计量、优化器、EMA 和原学习率计划。新训练的归一化统计量从全部演示计算。
 
 ## 四、评估
 
@@ -164,14 +164,14 @@ HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
 export UV_PROJECT_ENVIRONMENT=.venv-mt50
 
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/metaworld_mt50_v2/best.pt \
+  --checkpoint outputs/train/metaworld_mt50_v2/latest.pt \
   --episodes 50 --execute-steps 1 --protocol lerobot \
   --output-dir outputs/eval/metaworld_mt50_v2
 ```
 
 　　默认评估 50 个任务，每任务 50 回合，每回合最多 500 步。`--protocol lerobot` 使用可复现的随机位置；`--protocol benchmark` 使用 MetaWorld MT50 提供的 goal，每任务最多 50 个。快速检查可追加 `--tasks 0 --episodes 2 --horizon 50`，保存视频使用 `--videos`。
 
-　　评估输出为 `episodes.jsonl`、`results.json` 和可选 MP4，根据环境成功信号统计成功率。离线验证 loss 不等于成功率；比较实验时应保持评估协议、seed、回合数及动作执行长度一致。每次评估使用新的输出目录。
+　　评估输出为 `episodes.jsonl`、`results.json` 和可选 MP4，根据环境成功信号统计成功率。模型表现由手动运行的闭环评估衡量；比较实验时应保持评估协议、seed、回合数及动作执行长度一致。每次评估使用新的输出目录。
 
 ### 4.3 推理耗时测试
 
@@ -201,7 +201,7 @@ HF_HUB_OFFLINE=1 uv run scripts/measure_inference_time.py \
 | 项目           | 你的 V1 / V2                  | TurboVLA LIBERO                           |
 | -------------- | ----------------------------- | ----------------------------------------- |
 | 训练数据       | 仅 Spatial，10 个任务         | Spatial、Object、Goal、Long，共 40 个任务 |
-| 数据处理       | 原始 HDF5，90% 训练、10% 验证 | 去除无效动作的 `no_noops` RLDS 数据       |
+| 数据处理       | 原始 HDF5，全部演示参与训练 | 去除无效动作的 `no_noops` RLDS 数据       |
 | 图像尺寸       | 224×224，双相机               | 256×256，双相机                           |
 | 视觉编码器     | **CLIP ViT-B/16，冻结**       | **DINOv3 ViT-B，参与训练**                |
 | 语言编码器     | CLIP 文本编码器，冻结         | BERT，冻结                                |

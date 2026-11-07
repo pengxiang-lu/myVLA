@@ -62,7 +62,7 @@ def config(tmp_path):
     make_smoke_data(tmp_path / "data")
     return Config(
         ModelConfig(backend="tiny", image_size=32, hidden_dim=32, layers=1, heads=4),
-        DataConfig(directory=str(tmp_path / "data"), val_fraction=0.25),
+        DataConfig(directory=str(tmp_path / "data")),
         TrainConfig(
             output_dir=str(tmp_path / "run"),
             device="cpu",
@@ -72,40 +72,77 @@ def config(tmp_path):
             workers=0,
             steps=3,
             warmup_steps=1,
-            validate_every=2,
-            validation_batches=2,
             save_every=1,
             log_every=1,
         ),
     )
 
 
-def test_split_mask_and_training_only_stats(config):
+def test_all_trajectories_train_stats_and_padding(config):
     eps = scan_episodes(config.data, config.train.seed)
     assert manifest(eps) == manifest(scan_episodes(config.data, config.train.seed))
-    train_ids = {(e.path, e.demo) for e in eps if e.split == "train"}
-    val_ids = {(e.path, e.demo) for e in eps if e.split == "val"}
-    assert train_ids and val_ids and train_ids.isdisjoint(val_ids)
+    assert len(eps) == 4
+    assert all(e.split == "train" for e in eps)
     stats = compute_stats(eps)
     states = []
     for ep in eps:
-        if ep.split == "train":
-            with h5py.File(ep.path) as f:
-                states.append(raw_state(f[f"data/{ep.demo}/obs"], slice(None)))
+        with h5py.File(ep.path) as f:
+            states.append(raw_state(f[f"data/{ep.demo}/obs"], slice(None)))
     np.testing.assert_allclose(stats["state_mean"], np.concatenate(states).mean(0), atol=1e-6)
-    # Validation corruption must not contaminate normalization statistics.
-    for ep in eps:
-        if ep.split == "val":
-            with h5py.File(ep.path, "r+") as f:
-                f[f"data/{ep.demo}/obs/ee_states"][:] = 1e6
-    for k, value in compute_stats(eps).items():
-        np.testing.assert_array_equal(value, stats[k])
     dataset = LiberoDataset(eps, "train", config.data, config.model, stats)
     last = dataset[len(dataset) - 1]
     assert last["mask"].tolist() == [True] + [False] * 7
     assert last["images"].shape == (2, 3, 32, 32)
     with pytest.raises(IndexError):
         dataset[len(dataset)]
+
+
+def test_single_demonstration_can_train(config):
+    path = Path(config.data.directory) / "smoke_demo.hdf5"
+    with h5py.File(path, "r+") as f:
+        for name in ["demo_1", "demo_2", "demo_3"]:
+            del f[f"data/{name}"]
+    episodes = scan_episodes(config.data, config.train.seed)
+    assert len(episodes) == 1 and episodes[0].split == "train"
+    checkpoint = load_checkpoint(train(config))
+    assert checkpoint["step"] == config.train.steps
+    assert len(checkpoint["manifest"]) == 1
+
+
+@pytest.mark.parametrize("initialize", [False, True])
+def test_legacy_split_checkpoint_uses_all_data_and_preserves_stats(config, tmp_path, initialize):
+    config.train.ema_decay = 0.9
+    config.model.train_vision_encoder = True
+    checkpoint = train(config)
+    legacy = load_checkpoint(checkpoint)
+    legacy["config"]["data"]["val_fraction"] = 0.25
+    legacy["config"]["train"].update(validate_every=2, validation_batches=2)
+    legacy["best_val"] = 0.1
+    legacy["validation_weights"] = "ema"
+    legacy["manifest"][-1]["split"] = "val"
+    # A legacy checkpoint's statistics may exclude the former validation trajectories.
+    legacy["stats"]["state_mean"][0] = float(
+        np.float32(legacy["stats"]["state_mean"][0] + 0.1)
+    )
+    torch.save(legacy, checkpoint)
+    policy_from_checkpoint(checkpoint, torch.device("cpu"))
+    config.train.output_dir = str(tmp_path / "migrated")
+    config.train.steps = 4
+    kwargs = {"init_checkpoint" if initialize else "resume": checkpoint}
+    result = load_checkpoint(train(config, **kwargs))
+    assert result["stats"] == legacy["stats"]
+    assert all(e["split"] == "train" for e in result["manifest"])
+    assert len(result["manifest"]) == len(legacy["manifest"])
+    assert result["ema_updates"] == 4
+    assert "best_val" not in result
+    assert "val_fraction" not in result["config"]["data"]
+    assert "validate_every" not in result["config"]["train"]
+    # Migrating split labels must not bypass real source-data changes.
+    legacy["manifest"][0]["file_size"] += 1
+    torch.save(legacy, checkpoint)
+    config.train.output_dir = str(tmp_path / "changed_data")
+    with pytest.raises(ValueError, match="dataset|config/data differs"):
+        train(config, **kwargs)
 
 
 def test_masked_loss_ignores_padding():
@@ -238,12 +275,12 @@ def test_resume_matches_uninterrupted_training(
         assert reference["ema_updates"] == resumed["ema_updates"] == 3
         for key, value in reference["ema_head"].items():
             torch.testing.assert_close(resumed["ema_head"][key], value, rtol=0, atol=0)
-        assert reference["validation_weights"] == "ema"
     if train_vision:
         for name in (["vision", "ema_vision"] if ema_decay else ["vision"]):
             for key, value in reference[name].items():
                 torch.testing.assert_close(resumed[name][key], value, rtol=0, atol=0)
-    assert reference["best_val"] == resumed["best_val"]
+    assert "best_val" not in resumed
+    assert not (checkpoint.parent / "best.pt").exists()
     policy, _, _, _ = policy_from_checkpoint(checkpoint, torch.device("cpu"))
     assert not policy.training
     chosen = resumed["ema_head"] if ema_decay else resumed["head"]
@@ -265,12 +302,8 @@ def test_resume_matches_uninterrupted_training(
         json.loads(line) for line in (checkpoint.parent / "metrics.jsonl").read_text().splitlines()
     ]
     assert [r["step"] for r in records] == [1, 2, 3]
-    if ema_decay:
-        validations = [r for r in records if "val_loss" in r]
-        assert validations
-        for record in validations:
-            assert record["val_loss"] == record["ema_val_loss"]
-            assert "raw_val_loss" in record
+    assert all(not any("val_loss" in key for key in record) for record in records)
+    assert (checkpoint.parent / "loss_curve.png").exists()
 
 
 @pytest.mark.parametrize(
@@ -338,7 +371,7 @@ def test_extend_completed_run_preserves_optimizer_ema_and_original_lr_schedule(
         else:
             assert actual == expected
 
-    for key in ("head", "ema_head", "optimizer", "scheduler", "rng", "best_val"):
+    for key in ("head", "ema_head", "optimizer", "scheduler", "rng"):
         assert_identical(resumed[key], reference[key])
     if train_vision:
         for key in ("vision", "ema_vision"):
@@ -393,7 +426,7 @@ def test_finetune_initialization_starts_new_schedule(config, tmp_path):
     assert load_checkpoint(initial)["step"] == 3
     config.train.output_dir = str(tmp_path / "incompatible")
     config.model.chunk_size = 4
-    with pytest.raises(ValueError, match="same model and dataset split"):
+    with pytest.raises(ValueError, match="same model and dataset"):
         train(config, init_checkpoint=initial)
 
 

@@ -18,7 +18,6 @@ model:
 data:
   directory: data/libero_spatial
   pattern: '*_demo.hdf5'
-  val_fraction: 0.1
   flip_vertical: true
   dataset: libero
 train:
@@ -33,8 +32,6 @@ train:
   weight_decay: 0.001
   warmup_steps: 500
   grad_clip: 1.0
-  validate_every: 500
-  validation_batches: 400
   save_every: 1000
   log_every: 20
   seed: 42
