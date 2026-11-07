@@ -182,7 +182,10 @@ def main(argv=None):
     p = commands.add_parser("eval-metaworld", help="Closed-loop MetaWorld MT50 evaluation")
     p.add_argument("--checkpoint", required=True)
     p.add_argument("--weights", choices=["auto", "raw", "ema"], default="auto")
-    p.add_argument("--output-dir", required=True)
+    p.add_argument(
+        "--output-dir", required=True,
+        help="Output directory prefix; the actual checkpoint step is appended automatically",
+    )
     p.add_argument("--tasks", type=int, nargs="+")
     p.add_argument("--episodes", type=int, default=50)
     p.add_argument("--device", default="cuda")
@@ -205,7 +208,10 @@ def main(argv=None):
     p.add_argument("--episodes", type=int, default=10)
     p.add_argument("--device", default="cuda")
     p.add_argument("--execute-steps", type=int, default=12)
-    p.add_argument("--output-dir", required=True)
+    p.add_argument(
+        "--output-dir", required=True,
+        help="Output directory prefix; the actual checkpoint step is appended automatically",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--horizon", type=int)
     p.add_argument("--videos", action="store_true")

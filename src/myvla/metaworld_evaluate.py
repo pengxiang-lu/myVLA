@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from .eval_utils import prepare_eval_output
 from .metaworld_data import task_definitions, task_language
 from .preprocess import decode_actions, normalize_state, prepare_image
 from .train import policy_from_checkpoint, resolve_device, seed_everything
@@ -122,25 +123,23 @@ def evaluate_metaworld(
     task_ids = sorted(by_id) if tasks is None else tasks
     if not task_ids or len(set(task_ids)) != len(task_ids) or not set(task_ids) <= by_id.keys():
         raise ValueError("Select unique task IDs in [0,49]")
-    out = Path(output)
-    if any((out / name).exists() for name in ("episodes.jsonl", "results.json")):
-        raise FileExistsError(f"Evaluation output exists: {out}")
     device = resolve_device(device_name)
     seed_everything(seed)
     policy, config, stats, payload = policy_from_checkpoint(checkpoint, device, weights=weights)
     if config.data.dataset != "metaworld" or config.model.backend != "clip":
         raise ValueError("MetaWorld benchmark requires a real CLIP MT50 checkpoint")
+    out = prepare_eval_output(output, payload["step"])
     controller = MetaWorldController(policy, config, stats, device, execute_steps)
     trained_languages = {ep["language"] for ep in payload["manifest"] if ep["split"] == "train"}
     trained_tasks = [name for name in by_id.values() if task_language(name) in trained_languages]
     metaworld = import_metaworld()
     benchmark = metaworld.MT50(seed=seed) if protocol == "benchmark" else None
-    out.mkdir(parents=True, exist_ok=True)
     result = {
         "suite": "metaworld_mt50",
         "protocol": protocol,
         "checkpoint": str(Path(checkpoint).resolve()),
         "checkpoint_step": payload["step"],
+        "output_dir": str(out.resolve()),
         "weights": payload["inference_weights"],
         "config": config.to_dict(),
         "seed": seed,

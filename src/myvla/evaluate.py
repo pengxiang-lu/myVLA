@@ -13,6 +13,7 @@ if __package__ in {None, ""}:
 import numpy as np
 import torch
 
+from .eval_utils import prepare_eval_output
 from .libero_runtime import load_init_states, setup_libero
 from .preprocess import decode_actions, normalize_state, prepare_image, state_from_observation
 from .train import load_checkpoint, policy_from_checkpoint, resolve_device, seed_everything
@@ -117,13 +118,11 @@ def evaluate(
         raise ValueError("Select at least one task, without duplicate IDs")
     if any(i < 0 or i >= benchmark_suite.n_tasks for i in task_ids):
         raise ValueError("Task ID out of bounds")
-    out = Path(output)
-    if (out / "episodes.jsonl").exists() or (out / "results.json").exists():
-        raise FileExistsError(f"Evaluation output exists: {out}; choose a new directory")
-    out.mkdir(parents=True, exist_ok=True)
+    out = prepare_eval_output(output, payload["step"])
     result = {
         "checkpoint": str(Path(checkpoint).resolve()),
         "checkpoint_step": payload["step"],
+        "output_dir": str(out.resolve()),
         "weights": payload["inference_weights"],
         "suite": suite,
         "seed": seed,
@@ -228,7 +227,10 @@ def main(argv=None):
     )
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--weights", choices=["auto", "raw", "ema"], default="auto")
-    parser.add_argument("--output-dir", required=True)
+    parser.add_argument(
+        "--output-dir", required=True,
+        help="Output directory prefix; the actual checkpoint step is appended automatically",
+    )
     parser.add_argument(
         "--dataset",
         choices=["libero", "metaworld"],

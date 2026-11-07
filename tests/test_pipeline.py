@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -6,7 +7,7 @@ import pytest
 import torch
 
 from myvla.cli import make_smoke_data
-from myvla.config import Config, DataConfig, ModelConfig, TrainConfig
+from myvla.config import Config, DataConfig, ModelConfig, TrainConfig, load_config
 from myvla.data import LiberoDataset, compute_stats, manifest, raw_state, scan_episodes
 from myvla.evaluate import Controller, run_episode
 from myvla.model import Policy, action_loss
@@ -137,9 +138,16 @@ def test_frozen_backbone_and_output(config):
 
 
 def test_v3_updates_vision_while_text_and_unused_clip_projections_stay_frozen(config):
-    config.model.train_vision_encoder = True
-    config.model.fusion_layers = 2
+    configs = Path(__file__).resolve().parents[1] / "configs"
+    v3 = load_config(configs / "train_cfg_v3.yaml")
+    v1 = load_config(configs / "train_cfg_v1.yaml")
+    v1.model.train_vision_encoder = True
+    assert v3.model == v1.model
+    config.model.train_vision_encoder = v3.model.train_vision_encoder
+    config.model.fusion_layers = v3.model.fusion_layers
     policy = Policy(config.model).train()
+    assert len(policy.head.fusion) == 0
+    assert not policy.backbone.use_tokens
     vision = policy.backbone.clip.vision_model
     text = policy.backbone.clip.text_model
     assert vision.training and not text.training
