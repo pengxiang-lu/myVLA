@@ -118,12 +118,15 @@ V2 分为 V2.0（6 层）和 V2.1（2 层），均指双向交叉注意力融合
 
 ## 验证成功率：
 
-以下为当前已保存评估结果在 **LIBERO-Spatial** 上的闭环成功率。列头为 checkpoint 的实际训练步数；“—”表示暂无评估结果。模型版本依据结果文件中的架构与 checkpoint 路径判定，不仅依据输出目录名。
+以下记录各次评估在 **LIBERO-Spatial** 上的闭环成功率。列头为 checkpoint 的实际训练步数；“—”表示暂无评估结果。模型版本依据评估配置中的架构与 checkpoint 路径判定，不仅依据输出目录名。
+
+本次重新训练的 V1、V2.1 均使用全部 500 条演示，不划分验证集，训练 10,000 步；评估均使用 `checkpoint_10000.pt` 的 EMA 权重，seed=42，10 个任务×每任务 10 回合，共 100 回合。每次预测并执行 12 步动作，每回合最多 220 个控制步，先执行 10 步稳定物理。两者均成功 84 回合，成功率为 **84%**。配置和评估参数分别保存在各评估目录的 `config.yaml`、`evaluation.json` 中。
 
 | 模型 | 2,000 步 | 10,000 步 | 11,000 步 | 12,000 步 |
 |---|---:|---:|---:|---:|
-| V1 | — | — | [79%](outputs/eval/libero_spatial_v1_12/results.json) | — |
+| V1 | — | [84%](outputs/eval/libero_spatial_v1_10000/results.json) | [79%](outputs/eval/libero_spatial_v1_12/results.json) | — |
 | V2.0 | — | — | — | [73%](outputs/eval/libero_spatial_v2_12/results.json) |
-| V2.1 | — | — | — | — |
+| V2.1 | — | [84%](outputs/eval/libero_spatial_v2_1_10000/results.json) | — | — |
 | V3 | [18%](outputs/eval/libero_spatial_v3_2000/results.json) | [90%](outputs/eval/libero_spatial_v3_10000/results.json) | — | — |
 
+V1 的 11,000 步、V2.0 及 V3 的数据为历史记录，训练设置与本次重新训练可能不同；部分历史结果文件当前已不在本地目录中，保留原链接用于追溯。本次结果已由 `results.json` 和逐回合的 `progress.json` 交叉核对；总成功率相同不表示两种模型在各任务、各回合上的表现相同。
