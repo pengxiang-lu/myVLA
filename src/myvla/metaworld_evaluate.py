@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .eval_utils import prepare_eval_output
+from .eval_utils import EvaluationProgress, prepare_eval_output
 from .metaworld_data import task_definitions, task_language
 from .preprocess import decode_actions, normalize_state, prepare_image
 from .train import policy_from_checkpoint, resolve_device, seed_everything
@@ -141,7 +141,6 @@ def evaluate_metaworld(
         "checkpoint_step": payload["step"],
         "output_dir": str(out.resolve()),
         "weights": payload["inference_weights"],
-        "config": config.to_dict(),
         "seed": seed,
         "episodes_per_task": episodes,
         "horizon": horizon,
@@ -156,7 +155,9 @@ def evaluate_metaworld(
         "state": "raw_observation[:4]",
         "control": "continuous xyz + gripper [-1,1]",
         "success_criterion": "info.success at any step",
-        "tasks": [],
+        "tasks": [{"task_id": i, "task": by_id[i]} for i in task_ids],
+        "device": str(device),
+        "videos": videos,
         "full_mt50": len(task_ids) == 50,
         "training_task_count": len(trained_tasks),
         "training_tasks": trained_tasks,
@@ -165,73 +166,62 @@ def evaluate_metaworld(
             for k in ("myvla", "metaworld", "mujoco", "gymnasium", "numpy", "torch", "transformers")
         },
     }
-    with (out / "episodes.jsonl").open("w", buffering=1) as log:
-        for task_id in task_ids:
-            name = by_id[task_id]
-            env, goals = make_env(name, protocol, benchmark)
-            successes = 0
-            rng = np.random.default_rng(np.random.SeedSequence([seed, task_id]))
-            goal_indices = rng.permutation(len(goals))[:episodes].tolist()
-            try:
-                for episode in range(episodes):
-                    episode_seed = seed + 10000 * task_id + episode
-                    goal_index, goal_hash = None, None
-                    if protocol == "benchmark":
-                        goal_index = goal_indices[episode]
-                        goal = goals[goal_index]
-                        env.set_task(goal)
-                        goal_hash = hashlib.sha256(goal.data).hexdigest()
-                    writer = None
-                    try:
-                        if videos:
-                            import imageio.v2 as imageio
+    progress = EvaluationProgress(
+        out, checkpoint, payload["config"], result, [by_id[i] for i in task_ids], episodes,
+    )
+    for task_id in task_ids:
+        name = by_id[task_id]
+        if progress.task_done(name):
+            continue
+        env, goals = make_env(name, protocol, benchmark)
+        rng = np.random.default_rng(np.random.SeedSequence([seed, task_id]))
+        goal_indices = rng.permutation(len(goals))[:episodes].tolist()
+        try:
+            for episode in range(episodes):
+                if progress.done(name, episode):
+                    continue
+                episode_seed = seed + 10000 * task_id + episode
+                seed_everything(episode_seed)
+                goal_index, goal_hash = None, None
+                if protocol == "benchmark":
+                    goal_index = goal_indices[episode]
+                    goal = goals[goal_index]
+                    env.set_task(goal)
+                    goal_hash = hashlib.sha256(goal.data).hexdigest()
+                writer = None
+                try:
+                    if videos:
+                        import imageio.v2 as imageio
 
-                            writer = imageio.get_writer(
-                                str(out / f"task{task_id:02d}_episode{episode:03d}.mp4"), fps=80
-                            )
-                        success, steps, reward = run_episode(
-                            env,
-                            controller,
-                            task_language(name),
-                            episode_seed,
-                            horizon,
-                            on_frame=writer.append_data if writer else None,
+                        writer = imageio.get_writer(
+                            str(out / f"task{task_id:02d}_episode{episode:03d}.mp4"), fps=80
                         )
-                    finally:
-                        if writer:
-                            writer.close()
-                    successes += int(success)
-                    record = {
-                        "task_id": task_id,
-                        "task": name,
-                        "episode": episode,
-                        "seed": episode_seed,
-                        "goal_index": goal_index,
-                        "goal_sha256": goal_hash,
-                        "success": success,
-                        "steps": steps,
-                        "return": reward,
-                    }
-                    log.write(json.dumps(record) + "\n")
-                    print(json.dumps(record), flush=True)
-            finally:
-                env.close()
-            result["tasks"].append(
-                {
+                    success, steps, reward = run_episode(
+                        env,
+                        controller,
+                        task_language(name),
+                        episode_seed,
+                        horizon,
+                        on_frame=writer.append_data if writer else None,
+                    )
+                finally:
+                    if writer:
+                        writer.close()
+                record = {
                     "task_id": task_id,
                     "task": name,
-                    "episodes": episodes,
-                    "successes": successes,
-                    "success_rate": successes / episodes,
+                    "episode": episode,
+                    "seed": episode_seed,
+                    "goal_index": goal_index,
+                    "goal_sha256": goal_hash,
+                    "success": success,
+                    "steps": steps,
+                    "return": reward,
                 }
-            )
-            # Keep completed-task summaries if a later task is interrupted.
-            result["completed"] = False
-            temp = out / "results.json.tmp"
-            temp.write_text(json.dumps(result, indent=2))
-            temp.replace(out / "results.json")
-    result["completed"] = True
-    result["mean_success_rate"] = float(np.mean([t["success_rate"] for t in result["tasks"]]))
-    (out / "results.json").write_text(json.dumps(result, indent=2))
-    print(f"Mean success rate: {result['mean_success_rate']:.3f}")
-    return result
+                progress.record(name, episode, success, record)
+                print(json.dumps(record), flush=True)
+        finally:
+            env.close()
+    summary = progress.finish()
+    print(f"Mean success rate: {summary['total_success_rate']:.3f}")
+    return summary

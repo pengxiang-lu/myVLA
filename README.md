@@ -77,8 +77,8 @@ uv run scripts/inspect_data.py \
 
 ```bash
 uv run src/myvla/train.py \
-  --config configs/train_cfg_v3.yaml \
-  --output-dir outputs/train/libero_spatial_v3
+  --config configs/train_cfg_v2_1.yaml \
+  --output-dir outputs/train/libero_spatial_v2_1
 ```
 
 ### 3.3 MetaWorld MT50 数据准备与训练
@@ -106,7 +106,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 
 ### 3.4 参数设置与断点恢复
 
-​	训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。训练目录保存 `latest.pt`、`best.pt` 和 `metrics.jsonl` 等文件。`latest.pt` 用于恢复训练，`best.pt` 对应最低离线验证 loss；只会恢复到已保存的步数。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
+​	训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。所有演示均参与训练，不划分验证集、不计算验证 loss，也不自动启动仿真评估。训练目录保存 `checkpoint_<步数>.pt`、`metrics.jsonl` 和训练损失图 `loss_curve.png` 等文件；默认每 2,000 步及训练结束保存一份独立 checkpoint，例如 `checkpoint_2000.pt`、`checkpoint_4000.pt`，其中包含 RAW 和已启用的 EMA 权重。结束步数不是 2,000 的倍数时也会保存，例如 `checkpoint_13500.pt`。新训练不再生成 `latest.pt` 或 `best.pt`；历史文件保留。使用指定步数的 checkpoint 恢复训练。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
 
 　　若要从已有权重开始 EMA 微调，需使用开启 EMA 的配置和 `--init-checkpoint`，并指定新的输出目录；该操作重置优化器和 EMA 更新次数。有 EMA 的初始化 checkpoint 默认使用 EMA 权重作为微调起点。
 
@@ -114,24 +114,24 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 # 恢复 LIBERO 训练
 unset UV_PROJECT_ENVIRONMENT
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --resume outputs/train/libero_spatial_v1/latest.pt
+  --resume outputs/train/libero_spatial_v1/checkpoint_20000.pt
 
 # 恢复 MT50 训练
 export UV_PROJECT_ENVIRONMENT=.venv-mt50
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --resume outputs/train/metaworld_mt50_v2/latest.pt
+  --resume outputs/train/metaworld_mt50_v2/checkpoint_30000.pt
 ```
 
 　	如果需要指定训练终止步数，添加--steps参数。
 
 ```bash
-# 已完成 20,000 步，再追加 20,000 步；从 latest 保存的步数继续到累计 40,000 步
+# 已完成 20,000 步，再追加 20,000 步；从 checkpoint 保存的步数继续到累计 40,000 步
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --resume outputs/train/libero_spatial_v2/latest.pt \
+  --resume outputs/train/libero_spatial_v2/checkpoint_20000.pt \
   --steps 40000
 ```
 
-　　`--init-checkpoint` 用于加载权重开始新的微调，并重置优化器，两者不能同时使用。已有输出目录会被保护，重新训练请设置新的 `--output-dir`。
+　　`--init-checkpoint` 用于加载权重开始新的微调，并重置优化器，两者不能同时使用。已有输出目录会被保护，重新训练请设置新的 `--output-dir`。旧 checkpoint 仍可用于推理、初始化或续训；旧配置中的验证字段会被忽略。续训会将原验证轨迹纳入训练，并保留 checkpoint 的归一化统计量、优化器、EMA 和原学习率计划。仅使用 `--resume` 时，保存间隔默认改为 2,000 步；提供 `--config` 时使用配置中的 `save_every`，也可用 `--save-every` 显式指定。旧的 `latest.pt` 仍可作为续训起点，后续按新规则命名。新训练的归一化统计量从全部演示计算。
 
 ## 四、评估
 
@@ -144,7 +144,7 @@ unset UV_PROJECT_ENVIRONMENT
 export LIBERO_ROOT=/home/lpx/python-project/LIBERO
 
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_spatial_v3/latest.pt \
+  --checkpoint outputs/train/libero_spatial_v3/checkpoint_20000.pt \
   --suite libero_spatial --episodes 10 --execute-steps 12 \
   --output-dir outputs/eval/libero_spatial_v3
 ```
@@ -164,14 +164,24 @@ HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
 export UV_PROJECT_ENVIRONMENT=.venv-mt50
 
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/metaworld_mt50_v2/best.pt \
+  --checkpoint outputs/train/metaworld_mt50_v2/checkpoint_30000.pt \
   --episodes 50 --execute-steps 1 --protocol lerobot \
   --output-dir outputs/eval/metaworld_mt50_v2
 ```
 
 　　默认评估 50 个任务，每任务 50 回合，每回合最多 500 步。`--protocol lerobot` 使用可复现的随机位置；`--protocol benchmark` 使用 MetaWorld MT50 提供的 goal，每任务最多 50 个。快速检查可追加 `--tasks 0 --episodes 2 --horizon 50`，保存视频使用 `--videos`。
 
-　　评估输出为 `episodes.jsonl`、`results.json` 和可选 MP4，根据环境成功信号统计成功率。离线验证 loss 不等于成功率；比较实验时应保持评估协议、seed、回合数及动作执行长度一致。每次评估使用新的输出目录。
+　　评估会在每个 episode 完成后原子更新 `progress.json`，按任务名记录从 0 开始的 episode 编号及成功/失败布尔值。中断后使用相同 checkpoint、参数和 `--output-dir` 重新运行，会自动跳过所有已完成回合（包括失败回合），只重跑中断时尚未完成的回合。任务名使用 LIBERO 或 MetaWorld 的实际任务名。全部完成后再次运行会返回汇总，不重复仿真。
+
+评估目录保留以下文件：
+
+- `progress.json`：逐任务、逐回合的成功/失败记录，是续跑依据。
+- `results.json`：仅在全部回合完成后生成，包含 `success_rate`（各任务成功率）和 `total_success_rate`（各任务成功率的平均值）。
+- `config.yaml`：评估 checkpoint 内保存的原始模型/数据/训练配置，评估开始时写入并保留。
+- `evaluation.json`：checkpoint 路径、步数、SHA-256、所选 RAW/EMA 权重、评估参数及运行环境信息。续跑时核对，防止混用权重或协议。
+- `episodes.jsonl` 和可选 MP4：各回合的详细记录及视频。
+
+模型表现由手动闭环评估衡量；比较实验时保持评估协议、seed、回合数及动作执行长度一致。需要从头重测或更换参数时使用新输出目录；旧版未生成 `progress.json` 的评估目录仍受覆盖保护。
 
 ### 4.3 推理耗时测试
 
@@ -179,7 +189,7 @@ HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
 
 ```bash
 HF_HUB_OFFLINE=1 uv run scripts/measure_inference_time.py \
-  --checkpoint outputs/train/libero_spatial_v1/latest.pt \
+  --checkpoint outputs/train/libero_spatial_v1/checkpoint_20000.pt \
   --device cuda --precision fp32 \
   --output outputs/benchmark/libero_spatial_v1.json
 ```
@@ -201,7 +211,7 @@ HF_HUB_OFFLINE=1 uv run scripts/measure_inference_time.py \
 | 项目           | 你的 V1 / V2                  | TurboVLA LIBERO                           |
 | -------------- | ----------------------------- | ----------------------------------------- |
 | 训练数据       | 仅 Spatial，10 个任务         | Spatial、Object、Goal、Long，共 40 个任务 |
-| 数据处理       | 原始 HDF5，90% 训练、10% 验证 | 去除无效动作的 `no_noops` RLDS 数据       |
+| 数据处理       | 原始 HDF5，全部演示参与训练 | 去除无效动作的 `no_noops` RLDS 数据       |
 | 图像尺寸       | 224×224，双相机               | 256×256，双相机                           |
 | 视觉编码器     | **CLIP ViT-B/16，冻结**       | **DINOv3 ViT-B，参与训练**                |
 | 语言编码器     | CLIP 文本编码器，冻结         | BERT，冻结                                |

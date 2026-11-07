@@ -1,5 +1,4 @@
 import bisect
-import hashlib
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -61,13 +60,8 @@ def scan_episodes(config, seed):
                     raise ValueError(f"{path}: not a converted MT50 HDF5 file")
             language = read_language(f)
             demos = sorted(f["data"], key=lambda s: int(s.split("_")[-1]))
-            if len(demos) < 2:
-                raise ValueError(f"{path}: need >=2 demonstrations for trajectory split")
-            # Filename-based seed is independent of the number/order of other task files.
-            salt = int(hashlib.sha256(path.name.encode()).hexdigest()[:8], 16)
-            rng = np.random.default_rng(seed + salt)
-            n_val = min(len(demos) - 1, max(1, round(len(demos) * config.val_fraction)))
-            val_demos = set(rng.choice(demos, size=n_val, replace=False))
+            if not demos:
+                raise ValueError(f"{path}: no demonstrations")
             for demo in demos:
                 group = f[f"data/{demo}"]
                 n = len(group["actions"])
@@ -98,7 +92,7 @@ def scan_episodes(config, seed):
                         demo,
                         n,
                         language,
-                        "val" if demo in val_demos else "train",
+                        "train",
                         stat.st_size,
                         stat.st_mtime_ns,
                     )
@@ -107,7 +101,7 @@ def scan_episodes(config, seed):
 
 
 def compute_stats(episodes, dataset="libero"):
-    """Streaming sums over training trajectories only; no image caching."""
+    """Streaming sums over all training trajectories; no image caching."""
     total = 0
     state_dim, continuous_dim = (4, 4) if dataset == "metaworld" else (8, 6)
     sums = np.zeros(state_dim + continuous_dim, np.float64)

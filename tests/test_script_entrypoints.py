@@ -18,6 +18,7 @@ def test_resume_uses_relocated_checkpoint_directory(monkeypatch, tmp_path, overr
     script = load_script("train")
     config = script.load_config(ROOT / "configs/train_cfg_v1.yaml").to_dict()
     config["train"]["output_dir"] = "runs/old_location"
+    config["train"]["save_every"] = 1000
     monkeypatch.setattr(script, "load_checkpoint", lambda _: {"config": config})
     captured = []
     monkeypatch.setattr(script, "train", lambda config, **kw: captured.append(config))
@@ -27,6 +28,7 @@ def test_resume_uses_relocated_checkpoint_directory(monkeypatch, tmp_path, overr
         args.extend(["--output-dir", override])
     script.main(args)
     assert captured[0].train.output_dir == (override or "outputs/train/libero_spatial_v1")
+    assert captured[0].train.save_every == 2000
 
 
 def test_train_script_from_another_directory(monkeypatch, tmp_path):

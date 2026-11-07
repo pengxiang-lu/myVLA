@@ -18,7 +18,7 @@ import torch
 import yaml
 from torch.utils.data import DataLoader, Sampler
 
-from .config import from_dict, load_config
+from .config import TrainConfig, from_dict, load_config
 from .data import RobotDataset, compute_stats, manifest, scan_episodes
 from .ema import HeadEMA
 from .model import Policy, action_loss
@@ -40,17 +40,8 @@ def plot_loss(directory):
     FigureCanvasAgg(fig)
     ax = fig.subplots()
     train = [r for r in rows if "loss" in r]
-    val = [r for r in rows if "val_loss" in r]
     ax.plot([r["step"] for r in train], [r["loss"] for r in train],
-            color="#9bbbd5", alpha=0.6, linewidth=0.8, label="Train loss (logged batches)")
-    if val:
-        ax.plot([r["step"] for r in val], [r["val_loss"] for r in val],
-                color="#d97706", linewidth=1.8, marker=".", label="Validation loss")
-        best = min(val, key=lambda r: r["val_loss"])
-        ax.scatter([best["step"]], [best["val_loss"]], color="#b45309", zorder=3)
-        ax.annotate(f"Best val: {best['val_loss']:.4f} @ {best['step']:,}",
-                    (best["step"], best["val_loss"]), xytext=(8, 12),
-                    textcoords="offset points", fontsize=10)
+            color="#9bbbd5", linewidth=1, label="Train loss (logged batches)")
     ax.set(title=directory.name, xlabel="Optimizer step", ylabel="Action loss")
     ax.grid(alpha=0.2)
     ax.legend()
@@ -107,26 +98,6 @@ def move_batch(batch, device):
     }
 
 
-@torch.no_grad()
-def validate(policy, loader, device, precision, max_batches):
-    policy.eval()
-    total, count = 0.0, 0
-    try:
-        for i, batch in enumerate(loader):
-            if i >= max_batches:
-                break
-            batch = move_batch(batch, device)
-            with amp_context(device, precision):
-                predictions = policy(batch["images"], batch["state"], batch["language"])
-                loss, _ = action_loss(predictions, batch["actions"], batch["mask"])
-            valid = int(batch["mask"].sum())
-            total += loss.item() * valid
-            count += valid
-    finally:
-        policy.train()
-    return total / count if count else float("nan")
-
-
 def rng_state():
     state = np.random.get_state()
     return {
@@ -147,14 +118,13 @@ def restore_rng(state):
 
 
 def save_checkpoint(
-    path, policy, optimizer, scheduler, scaler, config, stats, episodes, step, best, ema=None,
+    path, policy, optimizer, scheduler, scaler, config, stats, episodes, step, ema=None,
     lr_schedule_steps=None,
 ):
     payload = {
         "format_version": 1,
         "config": config.to_dict(),
         "step": step,
-        "best_val": best,
         "stats": {k: v.tolist() for k, v in stats.items()},
         "manifest": manifest(episodes),
         "head": policy.head.state_dict(),
@@ -162,7 +132,6 @@ def save_checkpoint(
         "scheduler": scheduler.state_dict(),
         "scaler": scaler.state_dict(),
         "rng": rng_state(),
-        "validation_weights": "ema" if ema is not None else "raw",
         "lr_schedule_steps": (
             config.train.steps if lr_schedule_steps is None else lr_schedule_steps
         ),
@@ -223,6 +192,11 @@ def policy_from_checkpoint(path, device, weights="auto"):
     return policy, config, stats, payload
 
 
+def training_manifest(episodes):
+    """Normalize legacy split labels without relaxing source-file identity checks."""
+    return [dict(episode, split="train") for episode in episodes]
+
+
 def train(config, resume=None, init_checkpoint=None):
     config.validate()
     if resume and init_checkpoint:
@@ -234,8 +208,9 @@ def train(config, resume=None, init_checkpoint=None):
     if device.type == "cuda" and t.precision == "bf16" and not torch.cuda.is_bf16_supported():
         raise ValueError("This GPU does not support BF16; choose fp16")
     out = Path(t.output_dir)
-    if not resume and any(
-        (out / name).exists() for name in ("latest.pt", "best.pt", "metrics.jsonl")
+    if not resume and (
+        any((out / name).exists() for name in ("latest.pt", "best.pt", "metrics.jsonl"))
+        or any(out.glob("checkpoint_*.pt"))
     ):
         raise FileExistsError(f"Existing run: {out}; use --resume or a new output directory")
     out.mkdir(parents=True, exist_ok=True)
@@ -254,9 +229,9 @@ def train(config, resume=None, init_checkpoint=None):
         if (
             old.model != config.model
             or old.data != config.data
-            or initial["manifest"] != manifest(episodes)
+            or training_manifest(initial["manifest"]) != manifest(episodes)
         ):
-            raise ValueError("Initialization requires the same model and dataset split")
+            raise ValueError("Initialization requires the same model and dataset")
     if saved:
         old = from_dict(saved["config"])
         # Extend the stopping step while preserving the original learning-rate horizon.
@@ -264,26 +239,26 @@ def train(config, resume=None, init_checkpoint=None):
         if t.steps < old.train.steps:
             raise ValueError("Resume cannot reduce the configured training steps")
         old.train.steps = t.steps
-        # Output/device/worker count can change; other training settings must match.
-        for key in ("output_dir", "device", "workers", "log_every"):
+        # Operational settings can change without changing optimization.
+        for key in ("output_dir", "device", "workers", "log_every", "save_every"):
             setattr(old.train, key, getattr(t, key))
         # Accept a requested branch only if the rest matches; load the saved immutable commit.
         config.model.revision = old.model.revision
-        if old.to_dict() != config.to_dict() or saved["manifest"] != manifest(episodes):
+        if (
+            old.to_dict() != config.to_dict()
+            or training_manifest(saved["manifest"]) != manifest(episodes)
+        ):
             raise ValueError("Resume config/data differs from checkpoint; start a new run")
+    source = saved if saved is not None else initial
+    # Keep the checkpoint's normalization when adding formerly held-out trajectories.
     stats = (
-        {k: np.asarray(v, np.float32) for k, v in saved["stats"].items()}
-        if saved
+        {k: np.asarray(v, np.float32) for k, v in source["stats"].items()}
+        if source is not None
         else compute_stats(episodes, config.data.dataset)
     )
-    datasets = {
-        s: RobotDataset(episodes, s, config.data, config.model, stats) for s in ("train", "val")
-    }
+    dataset = RobotDataset(episodes, "train", config.data, config.model, stats)
     policy = Policy(config.model).to(device)
     if initial:
-        for key, value in stats.items():
-            if not np.array_equal(value, np.asarray(initial["stats"][key], np.float32)):
-                raise ValueError("Initialization normalization differs from checkpoint")
         initial_head, initial_weights = checkpoint_head(initial)
         incompatible = policy.head.load_state_dict(initial_head, strict=not adding_fusion)
         if adding_fusion and (
@@ -323,7 +298,7 @@ def train(config, resume=None, init_checkpoint=None):
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_scale)
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda" and t.precision == "fp16")
-    start, best = 0, float("inf")
+    start = 0
     if saved:
         policy.head.load_state_dict(saved["head"])
         if config.model.backend == "tiny":
@@ -332,7 +307,7 @@ def train(config, resume=None, init_checkpoint=None):
         optimizer.load_state_dict(saved["optimizer"])
         scheduler.load_state_dict(saved["scheduler"])
         scaler.load_state_dict(saved["scaler"])
-        start, best = saved["step"], saved["best_val"]
+        start = saved["step"]
     vision = policy.backbone.clip.vision_model if config.model.train_vision_encoder else None
     ema = HeadEMA(policy.head, t.ema_decay, vision=vision) if t.ema_decay else None
     if saved and ema is not None:
@@ -346,8 +321,16 @@ def train(config, resume=None, init_checkpoint=None):
         ema.updates = saved["ema_updates"]
     if start >= t.steps:
         raise ValueError("Checkpoint already reached configured training steps")
+    for path in out.glob("checkpoint_*.pt"):
+        suffix = path.stem.removeprefix("checkpoint_")
+        if suffix.isdigit():
+            step = int(suffix)
+            if start < step <= t.steps and (step % t.save_every == 0 or step == t.steps):
+                raise FileExistsError(
+                    f"Checkpoint already exists: {path}; use a new output directory"
+                )
     sampler = StepSampler(
-        len(datasets["train"]), t.batch_size, t.grad_accumulation, start, t.steps, t.seed
+        len(dataset), t.batch_size, t.grad_accumulation, start, t.steps, t.seed
     )
     common = {
         "batch_size": t.batch_size,
@@ -355,19 +338,9 @@ def train(config, resume=None, init_checkpoint=None):
         "pin_memory": device.type == "cuda",
     }
     loader = DataLoader(
-        datasets["train"],
+        dataset,
         sampler=sampler,
         generator=torch.Generator().manual_seed(t.seed),
-        **common,
-    )
-    # Fixed random ordering prevents a bounded validation pass from covering only task 0.
-    val_indices = torch.randperm(
-        len(datasets["val"]), generator=torch.Generator().manual_seed(t.seed + 2)
-    ).tolist()
-    val_loader = DataLoader(
-        datasets["val"],
-        sampler=val_indices,
-        generator=torch.Generator().manual_seed(t.seed + 1),
         **common,
     )
     batches = iter(loader)
@@ -379,8 +352,7 @@ def train(config, resume=None, init_checkpoint=None):
     print(
         json.dumps(
             {
-                "train_frames": len(datasets["train"]),
-                "val_frames": len(datasets["val"]),
+                "train_frames": len(dataset),
                 "device": str(device),
                 "trainable_parameters": sum(p.numel() for p in trainable),
                 "train_vision_encoder": config.model.train_vision_encoder,
@@ -429,46 +401,16 @@ def train(config, resume=None, init_checkpoint=None):
             }
             if config.model.train_vision_encoder:
                 record["vision_lr"] = optimizer.param_groups[1]["lr"]
-            improved = False
-            if step % t.validate_every == 0 or step == t.steps:
-                record["val_loss"] = validate(
-                    policy, val_loader, device, t.precision, t.validation_batches
-                )
-                if ema is not None:
-                    record["raw_val_loss"] = record["val_loss"]
-                    with ema.apply(policy):
-                        record["ema_val_loss"] = validate(
-                            policy, val_loader, device, t.precision, t.validation_batches
-                        )
-                    record["val_loss"] = record["ema_val_loss"]
-                improved = record["val_loss"] < best
-                if improved:
-                    best = record["val_loss"]
-            if step % t.log_every == 0 or step == start + 1 or "val_loss" in record:
+            if step % t.log_every == 0 or step == start + 1 or step == t.steps:
                 record["elapsed_seconds"] = time.monotonic() - started
                 if device.type == "cuda":
                     record["peak_vram_gib"] = torch.cuda.max_memory_allocated(device) / 2**30
                 line = json.dumps(record)
                 log.write(line + "\n")
                 print(line, flush=True)
-            if improved:
-                save_checkpoint(
-                    out / "best.pt",
-                    policy,
-                    optimizer,
-                    scheduler,
-                    scaler,
-                    config,
-                    stats,
-                    episodes,
-                    step,
-                    best,
-                    ema=ema,
-                    lr_schedule_steps=lr_schedule_steps,
-                )
             if step % t.save_every == 0 or step == t.steps:
                 save_checkpoint(
-                    out / "latest.pt",
+                    out / f"checkpoint_{step}.pt",
                     policy,
                     optimizer,
                     scheduler,
@@ -477,14 +419,12 @@ def train(config, resume=None, init_checkpoint=None):
                     stats,
                     episodes,
                     step,
-                    best,
                     ema=ema,
                     lr_schedule_steps=lr_schedule_steps,
                 )
-            if "val_loss" in record:
                 log.flush()
                 plot_loss(out)
-    return out / "latest.pt"
+    return out / f"checkpoint_{t.steps}.pt"
 
 
 def add_train_arguments(parser):
@@ -503,6 +443,7 @@ def add_train_arguments(parser):
         help="Total target steps; resume may extend this without restarting the LR schedule",
     )
     parser.add_argument("--workers", type=int)
+    parser.add_argument("--save-every", type=int, help="Checkpoint interval (default: 2000 steps)")
     parser.add_argument("--output-dir")
 
 
@@ -511,6 +452,7 @@ def run_training(args, parser, trainer=None):
         config = load_config(args.config)
     elif args.resume:
         config = from_dict(load_checkpoint(args.resume)["config"])
+        config.train.save_every = TrainConfig().save_every
         # Keep relocated runs in their current directory rather than the saved old path.
         config.train.output_dir = str(Path(args.resume).parent)
     else:
@@ -521,7 +463,7 @@ def run_training(args, parser, trainer=None):
         config = config.for_dataset(args.dataset)
     if args.data_dir is not None:
         config.data.directory = args.data_dir
-    for name in ("device", "steps", "workers", "output_dir"):
+    for name in ("device", "steps", "workers", "output_dir", "save_every"):
         value = getattr(args, name)
         if value is not None:
             setattr(config.train, name, value)

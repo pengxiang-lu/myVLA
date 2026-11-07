@@ -62,7 +62,7 @@ def config(tmp_path):
     make_smoke_data(tmp_path / "data")
     return Config(
         ModelConfig(backend="tiny", image_size=32, hidden_dim=32, layers=1, heads=4),
-        DataConfig(directory=str(tmp_path / "data"), val_fraction=0.25),
+        DataConfig(directory=str(tmp_path / "data")),
         TrainConfig(
             output_dir=str(tmp_path / "run"),
             device="cpu",
@@ -72,40 +72,102 @@ def config(tmp_path):
             workers=0,
             steps=3,
             warmup_steps=1,
-            validate_every=2,
-            validation_batches=2,
             save_every=1,
             log_every=1,
         ),
     )
 
 
-def test_split_mask_and_training_only_stats(config):
+def test_all_trajectories_train_stats_and_padding(config):
     eps = scan_episodes(config.data, config.train.seed)
     assert manifest(eps) == manifest(scan_episodes(config.data, config.train.seed))
-    train_ids = {(e.path, e.demo) for e in eps if e.split == "train"}
-    val_ids = {(e.path, e.demo) for e in eps if e.split == "val"}
-    assert train_ids and val_ids and train_ids.isdisjoint(val_ids)
+    assert len(eps) == 4
+    assert all(e.split == "train" for e in eps)
     stats = compute_stats(eps)
     states = []
     for ep in eps:
-        if ep.split == "train":
-            with h5py.File(ep.path) as f:
-                states.append(raw_state(f[f"data/{ep.demo}/obs"], slice(None)))
+        with h5py.File(ep.path) as f:
+            states.append(raw_state(f[f"data/{ep.demo}/obs"], slice(None)))
     np.testing.assert_allclose(stats["state_mean"], np.concatenate(states).mean(0), atol=1e-6)
-    # Validation corruption must not contaminate normalization statistics.
-    for ep in eps:
-        if ep.split == "val":
-            with h5py.File(ep.path, "r+") as f:
-                f[f"data/{ep.demo}/obs/ee_states"][:] = 1e6
-    for k, value in compute_stats(eps).items():
-        np.testing.assert_array_equal(value, stats[k])
     dataset = LiberoDataset(eps, "train", config.data, config.model, stats)
     last = dataset[len(dataset) - 1]
     assert last["mask"].tolist() == [True] + [False] * 7
     assert last["images"].shape == (2, 3, 32, 32)
     with pytest.raises(IndexError):
         dataset[len(dataset)]
+
+
+def test_single_demonstration_can_train(config):
+    path = Path(config.data.directory) / "smoke_demo.hdf5"
+    with h5py.File(path, "r+") as f:
+        for name in ["demo_1", "demo_2", "demo_3"]:
+            del f[f"data/{name}"]
+    episodes = scan_episodes(config.data, config.train.seed)
+    assert len(episodes) == 1 and episodes[0].split == "train"
+    checkpoint = load_checkpoint(train(config))
+    assert checkpoint["step"] == config.train.steps
+    assert len(checkpoint["manifest"]) == 1
+
+
+def test_numbered_checkpoints_keep_intervals_final_step_and_resume(config, monkeypatch):
+    import myvla.train as training
+
+    monkeypatch.setattr(training, "plot_loss", lambda _: None)
+    config.train.steps = 5
+    config.train.save_every = 2
+    final = train(config)
+    assert final.name == "checkpoint_5.pt"
+    assert sorted(p.name for p in final.parent.glob("*.pt")) == [
+        "checkpoint_2.pt", "checkpoint_4.pt", "checkpoint_5.pt",
+    ]
+    original_files = {p: p.read_bytes() for p in final.parent.glob("*.pt")}
+    for path in original_files:
+        assert load_checkpoint(path)["step"] == int(path.stem.split("_")[1])
+    # Resuming an earlier checkpoint must not overwrite its existing successors.
+    with pytest.raises(FileExistsError, match="Checkpoint already exists"):
+        train(config, resume=final.parent / "checkpoint_2.pt")
+    config.train.steps = 7
+    config.train.save_every = 3
+    continued = train(config, resume=final)
+    assert continued.name == "checkpoint_7.pt"
+    assert (final.parent / "checkpoint_6.pt").exists()
+    assert all(p.read_bytes() == content for p, content in original_files.items())
+
+
+@pytest.mark.parametrize("initialize", [False, True])
+def test_legacy_split_checkpoint_uses_all_data_and_preserves_stats(config, tmp_path, initialize):
+    config.train.ema_decay = 0.9
+    config.model.train_vision_encoder = True
+    checkpoint = train(config)
+    legacy = load_checkpoint(checkpoint)
+    legacy["config"]["data"]["val_fraction"] = 0.25
+    legacy["config"]["train"].update(validate_every=2, validation_batches=2)
+    legacy["best_val"] = 0.1
+    legacy["validation_weights"] = "ema"
+    legacy["manifest"][-1]["split"] = "val"
+    # A legacy checkpoint's statistics may exclude the former validation trajectories.
+    legacy["stats"]["state_mean"][0] = float(
+        np.float32(legacy["stats"]["state_mean"][0] + 0.1)
+    )
+    torch.save(legacy, checkpoint)
+    policy_from_checkpoint(checkpoint, torch.device("cpu"))
+    config.train.output_dir = str(tmp_path / "migrated")
+    config.train.steps = 4
+    kwargs = {"init_checkpoint" if initialize else "resume": checkpoint}
+    result = load_checkpoint(train(config, **kwargs))
+    assert result["stats"] == legacy["stats"]
+    assert all(e["split"] == "train" for e in result["manifest"])
+    assert len(result["manifest"]) == len(legacy["manifest"])
+    assert result["ema_updates"] == 4
+    assert "best_val" not in result
+    assert "val_fraction" not in result["config"]["data"]
+    assert "validate_every" not in result["config"]["train"]
+    # Migrating split labels must not bypass real source-data changes.
+    legacy["manifest"][0]["file_size"] += 1
+    torch.save(legacy, checkpoint)
+    config.train.output_dir = str(tmp_path / "changed_data")
+    with pytest.raises(ValueError, match="dataset|config/data differs"):
+        train(config, **kwargs)
 
 
 def test_masked_loss_ignores_padding():
@@ -220,17 +282,17 @@ def test_resume_matches_uninterrupted_training(
 
     def interrupt_after_step_one(path, *args, **kwargs):
         original_save(path, *args, **kwargs)
-        if path.name == "latest.pt":
+        if path.name.startswith("checkpoint_"):
             raise InterruptedError("Simulated stop after a complete optimizer step")
 
     with monkeypatch.context() as m:
         m.setattr(training, "save_checkpoint", interrupt_after_step_one)
         with pytest.raises(InterruptedError):
             train(config)
-    checkpoint = tmp_path / "interrupted/latest.pt"
+    checkpoint = tmp_path / "interrupted/checkpoint_1.pt"
     assert load_checkpoint(checkpoint)["step"] == 1
-    train(config, resume=checkpoint)
-    resumed = load_checkpoint(checkpoint)
+    resumed_path = train(config, resume=checkpoint)
+    resumed = load_checkpoint(resumed_path)
     assert resumed["step"] == 3
     for key, value in reference["head"].items():
         torch.testing.assert_close(resumed["head"][key], value, rtol=0, atol=0)
@@ -238,13 +300,13 @@ def test_resume_matches_uninterrupted_training(
         assert reference["ema_updates"] == resumed["ema_updates"] == 3
         for key, value in reference["ema_head"].items():
             torch.testing.assert_close(resumed["ema_head"][key], value, rtol=0, atol=0)
-        assert reference["validation_weights"] == "ema"
     if train_vision:
         for name in (["vision", "ema_vision"] if ema_decay else ["vision"]):
             for key, value in reference[name].items():
                 torch.testing.assert_close(resumed[name][key], value, rtol=0, atol=0)
-    assert reference["best_val"] == resumed["best_val"]
-    policy, _, _, _ = policy_from_checkpoint(checkpoint, torch.device("cpu"))
+    assert "best_val" not in resumed
+    assert not (checkpoint.parent / "best.pt").exists()
+    policy, _, _, _ = policy_from_checkpoint(resumed_path, torch.device("cpu"))
     assert not policy.training
     chosen = resumed["ema_head"] if ema_decay else resumed["head"]
     for key, value in policy.head.state_dict().items():
@@ -253,7 +315,7 @@ def test_resume_matches_uninterrupted_training(
         chosen_vision = resumed["ema_vision"] if ema_decay else resumed["vision"]
         for key, value in policy.backbone.clip.vision_model.state_dict().items():
             torch.testing.assert_close(value, chosen_vision[key], rtol=0, atol=0)
-    raw, _, _, _ = policy_from_checkpoint(checkpoint, torch.device("cpu"), weights="raw")
+    raw, _, _, _ = policy_from_checkpoint(resumed_path, torch.device("cpu"), weights="raw")
     for key, value in raw.head.state_dict().items():
         torch.testing.assert_close(value, resumed["head"][key], rtol=0, atol=0)
     if train_vision:
@@ -265,12 +327,8 @@ def test_resume_matches_uninterrupted_training(
         json.loads(line) for line in (checkpoint.parent / "metrics.jsonl").read_text().splitlines()
     ]
     assert [r["step"] for r in records] == [1, 2, 3]
-    if ema_decay:
-        validations = [r for r in records if "val_loss" in r]
-        assert validations
-        for record in validations:
-            assert record["val_loss"] == record["ema_val_loss"]
-            assert "raw_val_loss" in record
+    assert all(not any("val_loss" in key for key in record) for record in records)
+    assert (checkpoint.parent / "loss_curve.png").exists()
 
 
 @pytest.mark.parametrize(
@@ -312,17 +370,17 @@ def test_extend_completed_run_preserves_optimizer_ema_and_original_lr_schedule(
 
     def stop_after_first_extended_step(path, *args, **kwargs):
         original_save(path, *args, **kwargs)
-        if path.name == "latest.pt":
+        if path.name.startswith("checkpoint_"):
             raise InterruptedError("Stop at step 4")
 
     with monkeypatch.context() as context:
         context.setattr(training, "save_checkpoint", stop_after_first_extended_step)
         with pytest.raises(InterruptedError):
             train(config, resume=initial_path)
-    checkpoint = tmp_path / "extended_interrupted/latest.pt"
+    checkpoint = tmp_path / "extended_interrupted/checkpoint_4.pt"
     assert load_checkpoint(checkpoint)["step"] == 4
-    train(config, resume=checkpoint)
-    resumed = load_checkpoint(checkpoint)
+    resumed_path = train(config, resume=checkpoint)
+    resumed = load_checkpoint(resumed_path)
 
     def assert_identical(actual, expected):
         if isinstance(expected, torch.Tensor):
@@ -338,7 +396,7 @@ def test_extend_completed_run_preserves_optimizer_ema_and_original_lr_schedule(
         else:
             assert actual == expected
 
-    for key in ("head", "ema_head", "optimizer", "scheduler", "rng", "best_val"):
+    for key in ("head", "ema_head", "optimizer", "scheduler", "rng"):
         assert_identical(resumed[key], reference[key])
     if train_vision:
         for key in ("vision", "ema_vision"):
@@ -348,19 +406,19 @@ def test_extend_completed_run_preserves_optimizer_ema_and_original_lr_schedule(
     assert [r["step"] for r in records] == [4, 5, 6, 7]
     # A second extension must still retain the original three-step LR horizon.
     config.train.steps = 9
-    train(config, resume=checkpoint)
-    repeated = load_checkpoint(checkpoint)
+    repeated_path = train(config, resume=resumed_path)
+    repeated = load_checkpoint(repeated_path)
     assert repeated["lr_schedule_steps"] == 3
     assert repeated["step"] == repeated["ema_updates"] == 9
     # Reducing a previously saved target remains disallowed.
     config.train.steps = 7
     with pytest.raises(ValueError, match="cannot reduce"):
-        train(config, resume=checkpoint)
+        train(config, resume=repeated_path)
     # A completed run rejects unrelated hyperparameter changes, even when extended.
     config.train.steps = 10
     config.train.lr *= 2
     with pytest.raises(ValueError, match="Resume config/data differs"):
-        train(config, resume=checkpoint)
+        train(config, resume=repeated_path)
 
 
 def test_augmentation_preserves_shape_range_and_inputs():
@@ -393,7 +451,7 @@ def test_finetune_initialization_starts_new_schedule(config, tmp_path):
     assert load_checkpoint(initial)["step"] == 3
     config.train.output_dir = str(tmp_path / "incompatible")
     config.model.chunk_size = 4
-    with pytest.raises(ValueError, match="same model and dataset split"):
+    with pytest.raises(ValueError, match="same model and dataset"):
         train(config, init_checkpoint=initial)
 
 

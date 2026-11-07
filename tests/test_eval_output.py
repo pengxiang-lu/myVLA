@@ -23,3 +23,121 @@ def test_existing_reports_are_not_overwritten(tmp_path, filename):
     with pytest.raises(FileExistsError, match="v1_4000"):
         prepare_eval_output(tmp_path / "v1", 4000)
     assert report.read_text() == "existing result"
+
+
+def make_progress(tmp_path, **overrides):
+    from myvla.eval_utils import EvaluationProgress
+
+    checkpoint = tmp_path / "checkpoint.pt"
+    if not checkpoint.exists():
+        checkpoint.write_bytes(b"model weights")
+    args = dict(
+        out=prepare_eval_output(tmp_path / "eval", 2000), checkpoint=checkpoint,
+        config={"model": {"hidden_dim": 32}}, metadata={"weights": "ema", "seed": 42},
+        task_names=["BinFill", "StopCube"], episodes=2,
+    )
+    args.update(overrides)
+    return EvaluationProgress(**args)
+
+
+def test_progress_persists_success_and_failure_and_final_schema(tmp_path):
+    import json
+
+    import yaml
+
+    progress = make_progress(tmp_path)
+    progress.record("BinFill", 0, True, {"steps": 10})
+    progress.record("BinFill", 1, False, {"steps": 220})
+    assert json.loads((progress.out / "progress.json").read_text()) == {
+        "BinFill": {"0": True, "1": False}, "StopCube": {},
+    }
+    with pytest.raises(ValueError, match="incomplete"):
+        progress.finish()
+    resumed = make_progress(tmp_path)
+    assert resumed.done("BinFill", 1) and resumed.task_done("BinFill")
+    resumed.record("StopCube", 0, True, {})
+    resumed.record("StopCube", 1, True, {})
+    result = resumed.finish()
+    assert result == {
+        "success_rate": {"BinFill": 0.5, "StopCube": 1.0}, "total_success_rate": 0.75,
+    }
+    assert json.loads((progress.out / "results.json").read_text()) == result
+    assert yaml.safe_load((progress.out / "config.yaml").read_text()) == {
+        "model": {"hidden_dim": 32},
+    }
+    assert make_progress(tmp_path).finish() == result
+
+
+@pytest.mark.parametrize("change", ["checkpoint", "weights", "seed", "config", "episodes"])
+def test_resume_rejects_incompatible_runs(tmp_path, change):
+    progress = make_progress(tmp_path)
+    progress.record("BinFill", 0, False, {})
+    if change == "checkpoint":
+        (tmp_path / "checkpoint.pt").write_bytes(b"different model at the same step")
+        kwargs = {}
+    elif change in {"weights", "seed"}:
+        kwargs = {"metadata": {"weights": "raw", "seed": 42}}
+        if change == "seed":
+            kwargs["metadata"] = {"weights": "ema", "seed": 7}
+    elif change == "episodes":
+        # Production metadata also records episodes_per_task.
+        kwargs = {"metadata": {"weights": "ema", "seed": 42, "episodes_per_task": 3},
+                  "episodes": 3}
+    else:
+        kwargs = {"config": {"model": {"hidden_dim": 64}}}
+    with pytest.raises(ValueError, match="differ"):
+        make_progress(tmp_path, **kwargs)
+    assert progress.done("BinFill", 0)
+
+
+@pytest.mark.parametrize("value", [{"0": 1}, {"-1": True}, {"2": False}, []])
+def test_invalid_progress_is_not_overwritten(tmp_path, value):
+    import json
+
+    progress = make_progress(tmp_path)
+    path = progress.out / "progress.json"
+    path.write_text(json.dumps({"BinFill": value}))
+    before = path.read_text()
+    with pytest.raises(ValueError):
+        make_progress(tmp_path)
+    assert path.read_text() == before
+
+
+def test_resume_reconciles_uncommitted_duplicate_and_torn_episode_logs(tmp_path):
+    import json
+
+    progress = make_progress(tmp_path)
+    progress.record("BinFill", 0, False, {"steps": 220})
+    path = progress.out / "episodes.jsonl"
+    committed = path.read_text()
+    with path.open("a") as log:
+        log.write(committed)
+        log.write(json.dumps({"task": "BinFill", "episode": 1, "success": True}) + "\n")
+        log.write('{"task":')
+    resumed = make_progress(tmp_path)
+    assert path.read_text() == committed
+    assert resumed.done("BinFill", 0) and not resumed.done("BinFill", 1)
+
+
+def test_interrupted_atomic_progress_write_keeps_previous_results(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    progress = make_progress(tmp_path)
+    progress.record("BinFill", 0, True, {})
+    before = (progress.out / "progress.json").read_text()
+    replace = Path.replace
+
+    def interrupt_replace(path, target):
+        if path.name == "progress.json.tmp":
+            raise KeyboardInterrupt()
+        return replace(path, target)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "replace", interrupt_replace)
+        with pytest.raises(KeyboardInterrupt):
+            progress.record("BinFill", 1, False, {})
+    assert (progress.out / "progress.json").read_text() == before
+    resumed = make_progress(tmp_path)
+    assert resumed.done("BinFill", 0) and not resumed.done("BinFill", 1)
+    resumed.record("BinFill", 1, False, {})
+    assert len((progress.out / "episodes.jsonl").read_text().splitlines()) == 2

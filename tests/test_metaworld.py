@@ -88,27 +88,22 @@ def mt50_config(raw_mt50, tmp_path):
             steps=2,
             workers=0,
             warmup_steps=1,
-            validate_every=1,
-            validation_batches=2,
             save_every=1,
             log_every=1,
         ),
     ).validate()
 
 
-def test_mt50_import_split_stats_and_windows(mt50_config):
+def test_mt50_import_all_training_stats_and_windows(mt50_config):
     config = mt50_config
     episodes = scan_episodes(config.data, 42)
     assert len(episodes) == 6
-    assert sum(e.split == "val" for e in episodes) == 2
+    assert all(e.split == "train" for e in episodes)
     stats = compute_stats(episodes, "metaworld")
     state_values = []
     for ep in episodes:
         with h5py.File(ep.path, "r+") as f:
-            if ep.split == "train":
-                state_values.extend(f[f"data/{ep.demo}/obs/state"][:])
-            else:
-                f[f"data/{ep.demo}/obs/state"][:] = 1e5
+            state_values.extend(f[f"data/{ep.demo}/obs/state"][:])
     np.testing.assert_allclose(stats["state_mean"], np.mean(state_values, axis=0, dtype=np.float64))
     for key, value in compute_stats(episodes, "metaworld").items():
         np.testing.assert_array_equal(value, stats[key])
@@ -167,16 +162,16 @@ def test_mt50_training_resume_and_inference(mt50_config, tmp_path, monkeypatch):
 
     def stop(path, *args, **kwargs):
         save(path, *args, **kwargs)
-        if path.name == "latest.pt":
+        if path.name.startswith("checkpoint_"):
             raise InterruptedError()
 
     with monkeypatch.context() as m:
         m.setattr(training, "save_checkpoint", stop)
         with pytest.raises(InterruptedError):
             train(config)
-    checkpoint = tmp_path / "resume/latest.pt"
-    train(config, resume=checkpoint)
-    resumed, _, _, _ = policy_from_checkpoint(checkpoint, torch.device("cpu"))
+    checkpoint = tmp_path / "resume/checkpoint_1.pt"
+    resumed_path = train(config, resume=checkpoint)
+    resumed, _, _, _ = policy_from_checkpoint(resumed_path, torch.device("cpu"))
     for a, b in zip(reference.head.parameters(), resumed.head.parameters()):
         torch.testing.assert_close(a, b, rtol=0, atol=0)
     assert reference(torch.randn(2, 1, 3, 32, 32), torch.randn(2, 4), ["a", "b"]).shape == (2, 8, 4)
