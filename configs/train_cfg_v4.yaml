@@ -1,0 +1,41 @@
+# V4: V2.1 two-layer fusion with trainable CLIP vision; text stays frozen.
+# Training settings follow V3; effective batch remains 64.
+model:
+  backbone: models/clip-vit-base-patch16
+  revision: 57c216476eefef5ab752ec549e440a49ae4ae5f3
+  backend: clip
+  image_size: 224
+  hidden_dim: 256
+  layers: 4
+  heads: 8
+  chunk_size: 12
+  dropout: 0.1
+  fusion_layers: 2
+  state_dim: 8
+  action_dim: 7
+  cameras: 2
+  train_vision_encoder: true
+data:
+  directory: data/libero_spatial
+  pattern: '*_demo.hdf5'
+  flip_vertical: true
+  dataset: libero
+train:
+  output_dir: outputs/train/libero_spatial_v4
+  device: cuda
+  precision: fp16
+  batch_size: 16
+  grad_accumulation: 4
+  workers: 2
+  steps: 10000
+  lr: 0.0001
+  weight_decay: 0.001
+  warmup_steps: 500
+  grad_clip: 1.0
+  save_every: 2000
+  log_every: 20
+  seed: 42
+  image_shift: 0
+  color_jitter: 0.0
+  ema_decay: 0.999
+  vision_lr: 0.00001

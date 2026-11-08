@@ -100,7 +100,8 @@ def test_evaluation_script_selects_checkpoint_dataset(
         assert args["suite"] == "libero_spatial"
 
 
-def test_evaluation_script_preserves_explicit_options(monkeypatch, tmp_path):
+@pytest.mark.parametrize("video_flag", ["--video", "--videos"])
+def test_evaluation_script_preserves_explicit_options(monkeypatch, tmp_path, video_flag):
     script = load_script("evaluate")
     monkeypatch.setattr(
         script, "load_checkpoint", lambda _: {"config": {"data": {"dataset": "metaworld"}}}
@@ -127,7 +128,7 @@ def test_evaluation_script_preserves_explicit_options(monkeypatch, tmp_path):
             "1",
             "--protocol",
             "benchmark",
-            "--videos",
+            video_flag,
             "--device",
             "cpu",
             "--seed",

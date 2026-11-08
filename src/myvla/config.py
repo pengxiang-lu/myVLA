@@ -67,7 +67,7 @@ class Config:
         meta = dataset == "metaworld"
         suite = "metaworld_mt50" if meta else "libero_spatial"
         if self.model.train_vision_encoder:
-            model_version = "v3"
+            model_version = "v4" if self.model.fusion_layers == 2 else "v3"
         elif self.model.fusion_layers == 2:
             model_version = "v2_1"
         else:

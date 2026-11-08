@@ -6,7 +6,6 @@ from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pytest
-import yaml
 
 from myvla import evaluate as libero_eval
 from myvla import metaworld_evaluate as meta_eval
@@ -14,8 +13,9 @@ from myvla.config import Config
 
 
 @pytest.mark.parametrize("backend", ["libero", "metaworld_lerobot", "metaworld_benchmark"])
+@pytest.mark.parametrize("videos", [False, True])
 def test_evaluator_resumes_committed_episodes_and_matches_uninterrupted(
-    tmp_path, monkeypatch, backend,
+    tmp_path, monkeypatch, backend, videos,
 ):
     meta = backend.startswith("metaworld")
     module = meta_eval if meta else libero_eval
@@ -30,6 +30,25 @@ def test_evaluator_resumes_committed_episodes_and_matches_uninterrupted(
     ))
     monkeypatch.setattr(module, "version", lambda _: "test")
     created, closed, calls = [], [], []
+    video_paths, video_closes = [], []
+    imageio = ModuleType("imageio")
+    imageio_v2 = ModuleType("imageio.v2")
+
+    def get_writer(path, **kwargs):
+        from pathlib import Path
+
+        path = Path(path)
+        assert path.parent.is_dir() and path.parent.name == "videos"
+        path.touch()
+        video_paths.append(path)
+        return SimpleNamespace(
+            append_data=lambda frame: None, close=lambda: video_closes.append(path),
+        )
+
+    imageio_v2.get_writer = get_writer
+    imageio.v2 = imageio_v2
+    monkeypatch.setitem(sys.modules, "imageio", imageio)
+    monkeypatch.setitem(sys.modules, "imageio.v2", imageio_v2)
 
     class Env:
         def __init__(self, name):
@@ -95,14 +114,17 @@ def test_evaluator_resumes_committed_episodes_and_matches_uninterrupted(
         evaluate = libero_eval.evaluate
     monkeypatch.setattr(module, "run_episode", run_episode)
     interrupt = [True]
-    common = dict(checkpoint=checkpoint, episodes=3, device_name="cpu", execute_steps=1, **kwargs)
+    common = dict(
+        checkpoint=checkpoint, episodes=3, device_name="cpu", execute_steps=1,
+        videos=videos, **kwargs,
+    )
     output = tmp_path / "resumed"
     with pytest.raises(KeyboardInterrupt):
         evaluate(output=output, **common)
-    out = tmp_path / "resumed_2000"
+    out = tmp_path / "resumed/ckpt2000/seed42"
     progress = json.loads((out / "progress.json").read_text())
     assert sorted(map(len, progress.values())) == [1, 3]
-    assert not (out / "results.json").exists()
+    assert not (out / "log.json").exists()
     assert len(closed) == len(created) == 2
     first_completed = calls[:4]
     interrupt[0] = False
@@ -112,18 +134,31 @@ def test_evaluator_resumes_committed_episodes_and_matches_uninterrupted(
     assert calls[:4] == first_completed
     assert len(created) == len(closed) == 3
     lines = [json.loads(line) for line in (out / "episodes.jsonl").read_text().splitlines()]
-    assert len(lines) == 6
-    assert len({(r["task"], r["episode"]) for r in lines}) == 6
-    assert yaml.safe_load((out / "config.yaml").read_text()) == payload["config"]
-    assert json.loads((out / "results.json").read_text()) == result
+    assert len(lines) == 7
+    assert lines[0]["type"] == "evaluation_metadata"
+    assert len({(r["task"], r["episode"]) for r in lines[1:]}) == 6
+    assert lines[0]["evaluation"]["weights"] == "ema"
+    assert lines[0]["config"] == payload["config"]
+    assert not (out / "config.yaml").exists()
+    assert not (out / "evaluation.json").exists()
+    assert json.loads((out / "log.json").read_text()) == result
     assert set(result) == {"success_rate", "total_success_rate"}
     # Already completed runs must return their summary without creating any environments.
     assert evaluate(output=output, **common) == result
     assert len(calls) == 7 and len(created) == 3
+    assert (out / "videos").exists() == videos
+    if videos:
+        assert len(list((out / "videos").glob("*.mp4"))) == 6
+        assert len(video_paths) == len(video_closes) == 7
     reference = evaluate(output=tmp_path / "reference", **common)
     assert result == reference
-    assert json.loads((tmp_path / "reference_2000/progress.json").read_text()) == json.loads(
+    reference_progress = tmp_path / "reference/ckpt2000/seed42/progress.json"
+    assert json.loads(reference_progress.read_text()) == json.loads(
         (out / "progress.json").read_text()
     )
-    with pytest.raises(ValueError, match="settings differ"):
-        evaluate(output=output, **dict(common, seed=7))
+    with pytest.raises(ValueError, match="seed directory"):
+        evaluate(output=out, **dict(common, seed=7))
+    original = (out / "progress.json").read_bytes()
+    evaluate(output=output, **dict(common, seed=7))
+    assert (output / "ckpt2000/seed7/log.json").exists()
+    assert (out / "progress.json").read_bytes() == original

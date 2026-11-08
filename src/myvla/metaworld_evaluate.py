@@ -128,7 +128,7 @@ def evaluate_metaworld(
     policy, config, stats, payload = policy_from_checkpoint(checkpoint, device, weights=weights)
     if config.data.dataset != "metaworld" or config.model.backend != "clip":
         raise ValueError("MetaWorld benchmark requires a real CLIP MT50 checkpoint")
-    out = prepare_eval_output(output, payload["step"])
+    out = prepare_eval_output(output, payload["step"], seed)
     controller = MetaWorldController(policy, config, stats, device, execute_steps)
     trained_languages = {ep["language"] for ep in payload["manifest"] if ep["split"] == "train"}
     trained_tasks = [name for name in by_id.values() if task_language(name) in trained_languages]
@@ -169,6 +169,9 @@ def evaluate_metaworld(
     progress = EvaluationProgress(
         out, checkpoint, payload["config"], result, [by_id[i] for i in task_ids], episodes,
     )
+    video_dir = out / "videos"
+    if videos:
+        video_dir.mkdir(exist_ok=True)
     for task_id in task_ids:
         name = by_id[task_id]
         if progress.task_done(name):
@@ -194,7 +197,7 @@ def evaluate_metaworld(
                         import imageio.v2 as imageio
 
                         writer = imageio.get_writer(
-                            str(out / f"task{task_id:02d}_episode{episode:03d}.mp4"), fps=80
+                            str(video_dir / f"task{task_id:02d}_episode{episode:03d}.mp4"), fps=80
                         )
                     success, steps, reward = run_episode(
                         env,

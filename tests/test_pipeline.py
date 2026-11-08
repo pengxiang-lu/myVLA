@@ -109,6 +109,20 @@ def test_single_demonstration_can_train(config):
     assert len(checkpoint["manifest"]) == 1
 
 
+def test_resume_renames_legacy_training_log_and_preserves_history(config):
+    checkpoint = train(config)
+    log = checkpoint.parent / "log.jsonl"
+    history = log.read_text()
+    legacy = log.with_name("metrics.jsonl")
+    log.rename(legacy)
+    config.train.steps = 4
+    train(config, resume=checkpoint)
+    assert not legacy.exists()
+    assert log.read_text().startswith(history)
+    assert [json.loads(line)["step"] for line in log.read_text().splitlines()] == [1, 2, 3, 4]
+    assert (checkpoint.parent / "loss_curve.png").exists()
+
+
 def test_numbered_checkpoints_keep_intervals_final_step_and_resume(config, monkeypatch):
     import myvla.train as training
 
@@ -199,17 +213,21 @@ def test_frozen_backbone_and_output(config):
     assert not torch.equal(before, policy.head.output.weight)
 
 
-def test_v3_updates_vision_while_text_and_unused_clip_projections_stay_frozen(config):
+@pytest.mark.parametrize("version,base", [("v3", "v1"), ("v4", "v2_1")])
+def test_joint_training_updates_vision_while_text_and_clip_projections_stay_frozen(
+    config, version, base,
+):
     configs = Path(__file__).resolve().parents[1] / "configs"
-    v3 = load_config(configs / "train_cfg_v3.yaml")
-    v1 = load_config(configs / "train_cfg_v1.yaml")
-    v1.model.train_vision_encoder = True
-    assert v3.model == v1.model
-    config.model.train_vision_encoder = v3.model.train_vision_encoder
-    config.model.fusion_layers = v3.model.fusion_layers
+    joint = load_config(configs / f"train_cfg_{version}.yaml")
+    baseline = load_config(configs / f"train_cfg_{base}.yaml")
+    baseline.model.train_vision_encoder = True
+    assert joint.model == baseline.model
+    config.model.train_vision_encoder = joint.model.train_vision_encoder
+    config.model.fusion_layers = joint.model.fusion_layers
     policy = Policy(config.model).train()
-    assert len(policy.head.fusion) == 0
-    assert not policy.backbone.use_tokens
+    assert len(policy.head.fusion) == (2 if version == "v4" else 0)
+    assert policy.backbone.use_tokens == (version == "v4")
+    head_before = policy.head.output.weight.detach().clone()
     vision = policy.backbone.clip.vision_model
     text = policy.backbone.clip.text_model
     assert vision.training and not text.training
@@ -229,6 +247,9 @@ def test_v3_updates_vision_while_text_and_unused_clip_projections_stay_frozen(co
         assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in vision.parameters())
         optimizer.step()
     assert any(not torch.equal(before[name], p) for name, p in vision.named_parameters())
+    assert not torch.equal(head_before, policy.head.output.weight)
+    if version == "v4":
+        assert all(layer.gates.abs().sum() > 0 for layer in policy.head.fusion)
     for name, p in text.named_parameters():
         assert p.grad is None
         torch.testing.assert_close(p, text_before[name], rtol=0, atol=0)
@@ -324,7 +345,7 @@ def test_resume_matches_uninterrupted_training(
     with pytest.raises(FileExistsError):
         train(config)
     records = [
-        json.loads(line) for line in (checkpoint.parent / "metrics.jsonl").read_text().splitlines()
+        json.loads(line) for line in (checkpoint.parent / "log.jsonl").read_text().splitlines()
     ]
     assert [r["step"] for r in records] == [1, 2, 3]
     assert all(not any("val_loss" in key for key in record) for record in records)
@@ -401,7 +422,7 @@ def test_extend_completed_run_preserves_optimizer_ema_and_original_lr_schedule(
     if train_vision:
         for key in ("vision", "ema_vision"):
             assert_identical(resumed[key], reference[key])
-    records = [json.loads(line) for line in (checkpoint.parent / "metrics.jsonl")
+    records = [json.loads(line) for line in (checkpoint.parent / "log.jsonl")
                .read_text().splitlines()]
     assert [r["step"] for r in records] == [4, 5, 6, 7]
     # A second extension must still retain the original three-step LR horizon.

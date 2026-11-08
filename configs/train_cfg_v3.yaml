@@ -24,8 +24,8 @@ train:
   output_dir: outputs/train/libero_spatial_v3
   device: cuda
   precision: fp16
-  batch_size: 4
-  grad_accumulation: 16
+  batch_size: 16
+  grad_accumulation: 4
   workers: 2
   steps: 10000
   lr: 0.0001

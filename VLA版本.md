@@ -3,7 +3,7 @@
 ## VLA雏形：
 
 - 输入：224×224 双相机 RGB 图像、任务语言、8 维机器人状态。
-- 视觉编码器：预训练 CLIP ViT-B/16，V1/V2 冻结，V3 参与训练。
+- 视觉编码器：预训练 CLIP ViT-B/16，V1/V2 冻结，V3/V4 参与训练。
 - 文本编码器：CLIP 文本编码器，所有版本均保持冻结。
 - 输出：当前各版本训练配置均为 `chunk_size: 12`，输出 12×7 动作块。
 - 损失函数：前 6 维 Smooth L1，夹爪 BCE；排除轨迹尾部 padding。
@@ -116,17 +116,41 @@ V2 分为 V2.0（6 层）和 V2.1（2 层），均指双向交叉注意力融合
 | 动作查询、相机嵌入及模态嵌入 | 4,096 | <0.01% | 训练 |
 | **合计** | **154,238,728** | **100%** | |
 
+## 第四版 VLA：两层融合与视觉编码器联合训练
+
+模型结构与 V2.1 一致，保留 2 层双向视觉—语言交叉注意力融合块、4 层动作解码器，输出 12×7 动作块。训练时与 V3 一样解冻 CLIP 视觉编码器，语言编码器及 CLIP 原始投影层保持冻结；视觉编码器、融合层和动作头共同更新，并维护 EMA。
+
+- 配置：`configs/train_cfg_v4.yaml`。
+- 输出目录：`outputs/train/libero_spatial_v4`。
+- 训练参数沿用 V3：动作头/融合层学习率 `1e-4`，视觉编码器学习率 `1e-5`，batch=16、梯度累积=4，训练 10,000 步，每 2,000 步保存 checkpoint。
+- 总参数量：**157,397,776**（与 V2.1 相同）。
+- 可训练参数：**93,576,463**（约 **93.58M**，占 **59.45%**）。
+- 冻结参数：**63,821,313**。
+
 ## 验证成功率：
 
-以下记录各次评估在 **LIBERO-Spatial** 上的闭环成功率。列头为 checkpoint 的实际训练步数；“—”表示暂无评估结果。模型版本依据评估配置中的架构与 checkpoint 路径判定，不仅依据输出目录名。
+​	以下记录各次评估在 **LIBERO-Spatial** 上的闭环成功率。列头为 checkpoint 的实际训练步数；“—”表示暂无评估结果。模型版本依据评估配置中的架构与 checkpoint 路径判定，不仅依据输出目录名。
 
-本次重新训练的 V1、V2.1 均使用全部 500 条演示，不划分验证集，训练 10,000 步；评估均使用 `checkpoint_10000.pt` 的 EMA 权重，seed=42，10 个任务×每任务 10 回合，共 100 回合。每次预测并执行 12 步动作，每回合最多 220 个控制步，先执行 10 步稳定物理。两者均成功 84 回合，成功率为 **84%**。配置和评估参数分别保存在各评估目录的 `config.yaml`、`evaluation.json` 中。
+​	本次重新训练的 V1、V2.0、V2.1、V3 均使用全部 500 条演示，不划分验证集，训练 10,000 步；本次记录包含 6,000、8,000、10,000 步 checkpoint 的评估结果，目录均标记 seed=42，10 个任务×每任务 10 回合，共 100 回合。每次预测并执行 12 步动作，每回合最多 220 个控制步，先执行 10 步稳定物理。其中 V1、V2.1 在 10,000 步均成功 84 回合（84%），V3 在 10,000 步成功 92 回合（**92%**），是本表当前最高成功率。V3 三组评估均已核对为 EMA 权重、无融合层（`fusion_layers: 0`）、视觉编码器参与训练。当前评估流程将配置和评估参数记录在 `episodes.jsonl` 首行，不再另存评估配置文件。
 
-| 模型 | 2,000 步 | 10,000 步 | 11,000 步 | 12,000 步 |
-|---|---:|---:|---:|---:|
-| V1 | — | [84%](outputs/eval/libero_spatial_v1_10000/results.json) | [79%](outputs/eval/libero_spatial_v1_12/results.json) | — |
-| V2.0 | — | — | — | [73%](outputs/eval/libero_spatial_v2_12/results.json) |
-| V2.1 | — | [84%](outputs/eval/libero_spatial_v2_1_10000/results.json) | — | — |
-| V3 | [18%](outputs/eval/libero_spatial_v3_2000/results.json) | [90%](outputs/eval/libero_spatial_v3_10000/results.json) | — | — |
+| 模型 | 6,000 步 | 8,000 步 | 10,000 步 |
+|---|---:|---:|---:|
+| V1 | [89%](outputs/eval/libero_spatial_v1/ckpt6000/seed42/log.json) | [81%](outputs/eval/libero_spatial_v1/ckpt8000/seed42/log.json) | [84%](outputs/eval/libero_spatial_v1/ckpt10000/seed42/log.json) |
+| V2.0 | [80%](outputs/eval/libero_spatial_v2/ckpt6000/seed42/log.json) | [82%](outputs/eval/libero_spatial_v2/ckpt8000/seed42/log.json) | [79%](outputs/eval/libero_spatial_v2/ckpt10000/seed42/log.json) |
+| V2.1 | [80%](outputs/eval/libero_spatial_v2_1/ckpt6000/seed42/log.json) | [83%](outputs/eval/libero_spatial_v2_1/ckpt8000/seed42/log.json) | [84%](outputs/eval/libero_spatial_v2_1/ckpt10000/seed42/log.json) |
+| V3 | [89%](outputs/eval/libero_spatial_v3/ckpt6000/seed42/log.json) | [87%](outputs/eval/libero_spatial_v3/ckpt8000/seed42/log.json) | [92%](outputs/eval/libero_spatial_v3/ckpt10000/seed42/log.json) |
+| V4 | — | — | — |
 
-V1 的 11,000 步、V2.0 及 V3 的数据为历史记录，训练设置与本次重新训练可能不同；部分历史结果文件当前已不在本地目录中，保留原链接用于追溯。本次结果已由 `results.json` 和逐回合的 `progress.json` 交叉核对；总成功率相同不表示两种模型在各任务、各回合上的表现相同。
+​	本表 V3 为本次全量数据重新训练后的结果，已替换原有历史记录。本次结果已由 `log.json` 和逐回合的 `progress.json` 交叉核对；总成功率相同不表示两种模型在各任务、各回合上的表现相同。
+
+## 结论：
+
+### 数据集验证集划分：
+
+​	一开始我是将训练数据集分为90%训练和10%固定验证集，在800固定验证帧上计算loss来作为验证集结果。但是发现按照验证loss选择出的best.pt权重在任务完成上成功率还不如继续训练的。
+
+​	后来我直接不划分训练集和验证集，全部数据用于训练，发现任务成功率会替身大约5%百分点。
+
+### 输出步长：
+
+​	需要注意训练的时候要按什么action_chunk大小来训练，评估的时候如果action_chunk小于训练的action_chunk，会截取训练action_chunk的前面部分来作为动作。

@@ -129,7 +129,7 @@ def evaluate(
         rng = np.random.default_rng(np.random.SeedSequence([seed, task_id]))
         indices = rng.permutation(len(states))[:episodes].tolist()
         plan.append((task_id, task, states, states_sha256, indices))
-    out = prepare_eval_output(output, payload["step"])
+    out = prepare_eval_output(output, payload["step"], seed)
     result = {
         "checkpoint": str(Path(checkpoint).resolve()),
         "checkpoint_step": payload["step"],
@@ -159,6 +159,9 @@ def evaluate(
         out, checkpoint, payload["config"], result,
         [task.name for _, task, _, _, _ in plan], episodes,
     )
+    video_dir = out / "videos"
+    if videos:
+        video_dir.mkdir(exist_ok=True)
     for task_id, task, states, _, indices in plan:
         if progress.task_done(task.name):
             continue
@@ -181,7 +184,7 @@ def evaluate(
                         import imageio.v2 as imageio
 
                         writer = imageio.get_writer(
-                            str(out / f"task{task_id:02d}_episode{episode:03d}.mp4"), fps=20
+                            str(video_dir / f"task{task_id:02d}_episode{episode:03d}.mp4"), fps=20
                         )
 
                         def callback(obs):
@@ -230,7 +233,7 @@ def main(argv=None):
     parser.add_argument("--weights", choices=["auto", "raw", "ema"], default="auto")
     parser.add_argument(
         "--output-dir", required=True,
-        help="Output directory prefix; the actual checkpoint step is appended automatically",
+        help="Experiment directory; reports are saved under ckpt<step>/seed<seed>",
     )
     parser.add_argument(
         "--dataset",
@@ -255,7 +258,7 @@ def main(argv=None):
     parser.add_argument(
         "--horizon", type=int, help="Control-step limit (default: suite-specific; MetaWorld 500)"
     )
-    parser.add_argument("--videos", action="store_true")
+    parser.add_argument("--video", "--videos", dest="videos", action="store_true")
     parser.add_argument("--libero-root", help="LIBERO source checkout directory")
     parser.add_argument(
         "--protocol", choices=["lerobot", "benchmark"], help="MetaWorld protocol (default: lerobot)"

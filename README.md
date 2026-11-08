@@ -77,8 +77,8 @@ uv run scripts/inspect_data.py \
 
 ```bash
 uv run src/myvla/train.py \
-  --config configs/train_cfg_v2_1.yaml \
-  --output-dir outputs/train/libero_spatial_v2_1
+  --config configs/train_cfg_v3.yaml \
+  --output-dir outputs/train/libero_spatial_v3
 ```
 
 ### 3.3 MetaWorld MT50 数据准备与训练
@@ -106,7 +106,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 
 ### 3.4 参数设置与断点恢复
 
-​	训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/`。所有演示均参与训练，不划分验证集、不计算验证 loss，也不自动启动仿真评估。训练目录保存 `checkpoint_<步数>.pt`、`metrics.jsonl` 和训练损失图 `loss_curve.png` 等文件；默认每 2,000 步及训练结束保存一份独立 checkpoint，例如 `checkpoint_2000.pt`、`checkpoint_4000.pt`，其中包含 RAW 和已启用的 EMA 权重。结束步数不是 2,000 的倍数时也会保存，例如 `checkpoint_13500.pt`。新训练不再生成 `latest.pt` 或 `best.pt`；历史文件保留。使用指定步数的 checkpoint 恢复训练。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
+​	训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/ckpt<步数>/seed<seed>/`。所有演示均参与训练，不划分验证集、不计算验证 loss，也不自动启动仿真评估。训练目录保存 `checkpoint_<步数>.pt`、`log.jsonl` 和训练损失图 `loss_curve.png` 等文件；默认每 2,000 步及训练结束保存一份独立 checkpoint，例如 `checkpoint_2000.pt`、`checkpoint_4000.pt`，其中包含 RAW 和已启用的 EMA 权重。结束步数不是 2,000 的倍数时也会保存，例如 `checkpoint_13500.pt`。新训练不再生成 `latest.pt` 或 `best.pt`；历史文件保留。使用指定步数的 checkpoint 恢复训练。旧版训练日志 `metrics.jsonl` 在续训时自动改名为 `log.jsonl`，保留已有记录。训练目录仍保存训练配置 `config.yaml`。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
 
 　　若要从已有权重开始 EMA 微调，需使用开启 EMA 的配置和 `--init-checkpoint`，并指定新的输出目录；该操作重置优化器和 EMA 更新次数。有 EMA 的初始化 checkpoint 默认使用 EMA 权重作为微调起点。
 
@@ -144,12 +144,12 @@ unset UV_PROJECT_ENVIRONMENT
 export LIBERO_ROOT=/home/lpx/python-project/LIBERO
 
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_spatial_v2_1/checkpoint_10000.pt \
+  --checkpoint outputs/train/libero_spatial_v3/checkpoint_10000.pt \
   --suite libero_spatial --episodes 10 --execute-steps 12 \
-  --output-dir outputs/eval/libero_spatial_v2_1
+  --output-dir outputs/eval/libero_spatial_v3 
 ```
 
-　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--videos` 保存视频。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，默认每次执行完整 12 步预测动作后重新观察；使用旧的 8 步 checkpoint 时，需显式设置 `--execute-steps 8` 或更小的值。
+　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--video`（或 `--videos`）保存视频到 `ckpt<步数>/seed<seed>/videos/`。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，默认每次执行完整 12 步预测动作后重新观察；使用旧的 8 步 checkpoint 时，需显式设置 `--execute-steps 8` 或更小的值。
 
 ​	由于训练好的权重里面用EMA 权重和原始权重，默认使用EMA权重，如果需要显式指定使用的权重类型可以在脚本后面添加下面参数来指定：
 
@@ -169,17 +169,29 @@ HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
   --output-dir outputs/eval/metaworld_mt50_v2
 ```
 
-　　默认评估 50 个任务，每任务 50 回合，每回合最多 500 步。`--protocol lerobot` 使用可复现的随机位置；`--protocol benchmark` 使用 MetaWorld MT50 提供的 goal，每任务最多 50 个。快速检查可追加 `--tasks 0 --episodes 2 --horizon 50`，保存视频使用 `--videos`。
+　　默认评估 50 个任务，每任务 50 回合，每回合最多 500 步。`--protocol lerobot` 使用可复现的随机位置；`--protocol benchmark` 使用 MetaWorld MT50 提供的 goal，每任务最多 50 个。快速检查可追加 `--tasks 0 --episodes 2 --horizon 50`，保存视频使用 `--video`（或 `--videos`）。
 
 　　评估会在每个 episode 完成后原子更新 `progress.json`，按任务名记录从 0 开始的 episode 编号及成功/失败布尔值。中断后使用相同 checkpoint、参数和 `--output-dir` 重新运行，会自动跳过所有已完成回合（包括失败回合），只重跑中断时尚未完成的回合。任务名使用 LIBERO 或 MetaWorld 的实际任务名。全部完成后再次运行会返回汇总，不重复仿真。
 
-评估目录保留以下文件：
+输出目录按实验名和 checkpoint 步数组织。例如上述命令生成：
+
+```text
+outputs/eval/libero_spatial_v2_1/
+└── ckpt10000/
+    └── seed42/
+        ├── progress.json
+        ├── log.json
+        ├── episodes.jsonl
+        └── videos/
+            └── task00_episode000.mp4
+```
+
+`--output-dir` 指定实验目录；程序按 checkpoint 的实际步数和 `--seed`（默认 42）创建 `ckpt<步数>/seed<seed>/` 子目录。不同 seed 自动分目录保存，无需修改实验目录名；也可直接传入匹配的 checkpoint 或 seed 目录。启用视频时才在 seed 目录内创建 `videos/`。评估目录保留以下文件：
 
 - `progress.json`：逐任务、逐回合的成功/失败记录，是续跑依据。
-- `results.json`：仅在全部回合完成后生成，包含 `success_rate`（各任务成功率）和 `total_success_rate`（各任务成功率的平均值）。
-- `config.yaml`：评估 checkpoint 内保存的原始模型/数据/训练配置，评估开始时写入并保留。
-- `evaluation.json`：checkpoint 路径、步数、SHA-256、所选 RAW/EMA 权重、评估参数及运行环境信息。续跑时核对，防止混用权重或协议。
-- `episodes.jsonl` 和可选 MP4：各回合的详细记录及视频。
+- `log.json`：仅在全部回合完成后生成，包含 `success_rate`（各任务成功率）和 `total_success_rate`（各任务成功率的平均值）。
+- `episodes.jsonl`：首行是 `type: evaluation_metadata` 的配置和续跑核对记录（checkpoint SHA-256、所选权重、seed 及评估参数等），后续每行是一条 episode 详细记录。不再生成评估用 `config.yaml` 或 `evaluation.json`；旧版评估目录续跑时会将信息迁入该首行，再移除旧文件。
+- 可选的 `videos/*.mp4`：各回合的视频。
 
 模型表现由手动闭环评估衡量；比较实验时保持评估协议、seed、回合数及动作执行长度一致。需要从头重测或更换参数时使用新输出目录；旧版未生成 `progress.json` 的评估目录仍受覆盖保护。
 

@@ -182,7 +182,7 @@ def main(argv=None):
     p.add_argument("--weights", choices=["auto", "raw", "ema"], default="auto")
     p.add_argument(
         "--output-dir", required=True,
-        help="Output directory prefix; the actual checkpoint step is appended automatically",
+        help="Experiment directory; reports are saved under ckpt<step>/seed<seed>",
     )
     p.add_argument("--tasks", type=int, nargs="+")
     p.add_argument("--episodes", type=int, default=50)
@@ -191,7 +191,7 @@ def main(argv=None):
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--horizon", type=int, default=500)
     p.add_argument("--protocol", choices=["lerobot", "benchmark"], default="lerobot")
-    p.add_argument("--videos", action="store_true")
+    p.add_argument("--video", "--videos", dest="videos", action="store_true")
     p = commands.add_parser("train")
     add_train_arguments(p)
     p = commands.add_parser("eval", help="Closed-loop LIBERO simulator evaluation")
@@ -208,11 +208,11 @@ def main(argv=None):
     p.add_argument("--execute-steps", type=int, default=12)
     p.add_argument(
         "--output-dir", required=True,
-        help="Output directory prefix; the actual checkpoint step is appended automatically",
+        help="Experiment directory; reports are saved under ckpt<step>/seed<seed>",
     )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--horizon", type=int)
-    p.add_argument("--videos", action="store_true")
+    p.add_argument("--video", "--videos", dest="videos", action="store_true")
     p.add_argument("--libero-root")
     p = commands.add_parser("download", help="Download LIBERO or raw MT50 from official HF source")
     p.add_argument(

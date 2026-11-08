@@ -25,13 +25,24 @@ from .model import Policy, action_loss
 from .preprocess import augment_images
 
 
+def training_log_path(directory):
+    """Rename legacy logs when resuming without discarding their history."""
+    directory = Path(directory)
+    path, legacy = directory / "log.jsonl", directory / "metrics.jsonl"
+    if legacy.exists():
+        if path.exists():
+            raise FileExistsError(f"Both log.jsonl and metrics.jsonl exist in {directory}")
+        legacy.rename(path)
+    return path
+
+
 def plot_loss(directory):
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
 
     directory = Path(directory)
     rows = []
-    for line in (directory / "metrics.jsonl").read_text().splitlines():
+    for line in training_log_path(directory).read_text().splitlines():
         if line.strip():
             rows.append(json.loads(line))
     if not rows:
@@ -209,7 +220,10 @@ def train(config, resume=None, init_checkpoint=None):
         raise ValueError("This GPU does not support BF16; choose fp16")
     out = Path(t.output_dir)
     if not resume and (
-        any((out / name).exists() for name in ("latest.pt", "best.pt", "metrics.jsonl"))
+        any(
+            (out / name).exists()
+            for name in ("latest.pt", "best.pt", "log.jsonl", "metrics.jsonl")
+        )
         or any(out.glob("checkpoint_*.pt"))
     ):
         raise FileExistsError(f"Existing run: {out}; use --resume or a new output directory")
@@ -368,7 +382,7 @@ def train(config, resume=None, init_checkpoint=None):
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
     started = time.monotonic()
-    with (out / "metrics.jsonl").open("a", buffering=1) as log:
+    with training_log_path(out).open("a", buffering=1) as log:
         for step in range(start + 1, t.steps + 1):
             optimizer.zero_grad(set_to_none=True)
             train_loss = 0.0
@@ -476,7 +490,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Train V1, V2 or V3 on LIBERO or MetaWorld MT50.",
+        description="Train V1, V2, V3 or V4 on LIBERO or MetaWorld MT50.",
         epilog="Relative config, data, model and output paths use the project root.",
     )
     add_train_arguments(parser)

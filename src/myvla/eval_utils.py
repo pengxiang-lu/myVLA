@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import yaml
@@ -14,17 +15,31 @@ def atomic_write(path, text):
     temp.replace(path)
 
 
-def prepare_eval_output(output, checkpoint_step):
-    """Append the actual checkpoint step; existing resumable runs are validated later."""
+def prepare_eval_output(output, checkpoint_step, seed=42):
+    """Group evaluations by experiment, checkpoint step and evaluation seed."""
     out = Path(output)
-    suffix = f"_{checkpoint_step}"
-    if not out.name.endswith(suffix):
-        out = out.with_name(out.name + suffix)
-    if any((out / name).exists() for name in ("episodes.jsonl", "results.json")):
+    seed_name = f"seed{seed}"
+    if re.fullmatch(r"seed-?\d+", out.name):
+        if out.name != seed_name:
+            raise ValueError(f"Output seed directory must be {seed_name}, got {out.name}")
+        if out.parent.name != f"ckpt{checkpoint_step}":
+            raise ValueError(f"Output checkpoint directory must be ckpt{checkpoint_step}")
+        out = out.parent
+    name = f"ckpt{checkpoint_step}"
+    if re.fullmatch(r"ckpt_?\d+", out.name):
+        if out.name != name:
+            raise ValueError(f"Output checkpoint directory must be {name}, got {out.name}")
+    else:
+        out = out / name
+    out = out / seed_name
+    if any((out / name).exists() for name in ("episodes.jsonl", "log.json", "results.json")):
         if not (out / "progress.json").exists():
             raise FileExistsError(f"Evaluation output exists: {out}; choose a new directory")
     out.mkdir(parents=True, exist_ok=True)
-    print(f"Evaluation output: {out.resolve()} (checkpoint step {checkpoint_step})", flush=True)
+    print(
+        f"Evaluation output: {out.resolve()} (checkpoint step {checkpoint_step}, seed {seed})",
+        flush=True,
+    )
     return out
 
 
@@ -45,29 +60,51 @@ class EvaluationProgress:
             metadata, checkpoint_sha256=digest.hexdigest(), format_version=2,
             episodes_per_task=episodes,
         )
-        # The exact serialized checkpoint config is retained, including legacy fields.
-        metadata["config"] = config
         metadata["task_names"] = self.task_names
-        metadata_path = self.out / "evaluation.json"
+        # Keep resume identity in the existing detailed log, without a separate config file.
+        self.header = dict(type="evaluation_metadata", config=config, evaluation=metadata)
+        log_path = self.out / "episodes.jsonl"
+        log_text = log_path.read_text() if log_path.exists() else ""
+        try:
+            first = json.loads(log_text.splitlines()[0]) if log_text else None
+        except (ValueError, IndexError):
+            first = None
         config_path = self.out / "config.yaml"
-        progress_path = self.out / "progress.json"
-        if metadata_path.exists():
-            if json.loads(metadata_path.read_text()) != metadata:
-                raise ValueError(
-                    "Evaluation checkpoint or settings differ; use a new output directory"
-                )
-            if not config_path.exists() or yaml.safe_load(config_path.read_text()) != config:
-                raise ValueError("Evaluation config.yaml is missing or differs from the checkpoint")
+        legacy_path = self.out / "evaluation.json"
+        has_header = isinstance(first, dict) and first.get("type") == "evaluation_metadata"
+        if has_header:
+            stored = first
+        elif legacy_path.exists():
+            legacy = json.loads(legacy_path.read_text())
+            legacy_config = legacy.pop("config")
+            stored = dict(type="evaluation_metadata", config=legacy_config, evaluation=legacy)
+        elif config_path.exists():
+            legacy_config = yaml.safe_load(config_path.read_text())
+            if not isinstance(legacy_config, dict) or "evaluation" not in legacy_config:
+                raise ValueError("Legacy evaluation config has no resume metadata")
+            legacy = legacy_config.pop("evaluation")
+            stored = dict(type="evaluation_metadata", config=legacy_config, evaluation=legacy)
         else:
-            if progress_path.exists():
-                raise ValueError("Cannot resume progress.json without matching evaluation.json")
-            atomic_write(config_path, yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
-            atomic_write(metadata_path, json.dumps(metadata, indent=2))
+            stored = None
+        if stored is not None and stored != self.header:
+            raise ValueError(
+                "Evaluation checkpoint or settings differ; use a new output directory"
+            )
+        progress_path = self.out / "progress.json"
         if progress_path.exists():
+            if stored is None:
+                raise ValueError(
+                    "Cannot resume progress.json without matching episode-log metadata"
+                )
             self.progress = json.loads(progress_path.read_text())
             self._validate()
         else:
             self.progress = {}
+        if not has_header:
+            atomic_write(log_path, json.dumps(self.header) + "\n" + log_text)
+        # Remove old metadata only after its replacement has been safely written.
+        config_path.unlink(missing_ok=True)
+        legacy_path.unlink(missing_ok=True)
         for task in self.task_names:
             self.progress.setdefault(task, {})
         self._save()
@@ -103,7 +140,10 @@ class EvaluationProgress:
                 and record.get("success") is self.progress[task][episode]
             ):
                 records[task, episode] = record
-        atomic_write(path, "".join(json.dumps(r) + "\n" for r in records.values()))
+        atomic_write(
+            path, json.dumps(self.header) + "\n"
+            + "".join(json.dumps(r) + "\n" for r in records.values()),
+        )
 
     def done(self, task, episode):
         # A failed episode is completed too: never use its boolean value as the check.
@@ -131,5 +171,5 @@ class EvaluationProgress:
             task: sum(self.progress[task].values()) / self.episodes for task in self.task_names
         }
         result = {"success_rate": rates, "total_success_rate": sum(rates.values()) / len(rates)}
-        atomic_write(self.out / "results.json", json.dumps(result, indent=2))
+        atomic_write(self.out / "log.json", json.dumps(result, indent=2))
         return result
