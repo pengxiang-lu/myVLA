@@ -77,8 +77,8 @@ uv run scripts/inspect_data.py \
 
 ```bash
 uv run src/myvla/train.py \
-  --config configs/train_cfg_v3_1.yaml \
-  --output-dir outputs/train/libero_spatial_v3_1
+  --config configs/train_cfg_v3_2.yaml \
+  --output-dir outputs/train/libero_spatial_v3_2
 ```
 
 ### 3.3 MetaWorld MT50 数据准备与训练
