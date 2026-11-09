@@ -77,8 +77,8 @@ uv run scripts/inspect_data.py \
 
 ```bash
 uv run src/myvla/train.py \
-  --config configs/train_cfg_v3.yaml \
-  --output-dir outputs/train/libero_spatial_v3
+  --config configs/train_cfg_v4.yaml \
+  --output-dir outputs/train/libero_spatial_v4
 ```
 
 ### 3.3 MetaWorld MT50 数据准备与训练
@@ -144,9 +144,19 @@ unset UV_PROJECT_ENVIRONMENT
 export LIBERO_ROOT=/home/lpx/python-project/LIBERO
 
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_spatial_v3/checkpoint_10000.pt \
+  --checkpoint outputs/train/libero_spatial_v4/checkpoint_10000.pt \
   --suite libero_spatial --episodes 10 --execute-steps 12 \
-  --output-dir outputs/eval/libero_spatial_v3 
+  --output-dir outputs/eval/libero_spatial_v4 
+  
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+  --checkpoint outputs/train/libero_spatial_v4/checkpoint_8000.pt \
+  --suite libero_spatial --episodes 10 --execute-steps 12 \
+  --output-dir outputs/eval/libero_spatial_v4 
+  
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+  --checkpoint outputs/train/libero_spatial_v4/checkpoint_6000.pt \
+  --suite libero_spatial --episodes 10 --execute-steps 12 \
+  --output-dir outputs/eval/libero_spatial_v4 
 ```
 
 　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--video`（或 `--videos`）保存视频到 `ckpt<步数>/seed<seed>/videos/`。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，默认每次执行完整 12 步预测动作后重新观察；使用旧的 8 步 checkpoint 时，需显式设置 `--execute-steps 8` 或更小的值。

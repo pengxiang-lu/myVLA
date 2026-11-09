@@ -37,6 +37,9 @@ def training_log_path(directory):
 
 
 def plot_loss(directory):
+    # Colab exports an inline backend that may be absent in the training venv.
+    # Select the file-only backend before importing matplotlib, which validates it.
+    os.environ["MPLBACKEND"] = "Agg"
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
 
