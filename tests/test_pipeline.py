@@ -213,7 +213,7 @@ def test_frozen_backbone_and_output(config):
     assert not torch.equal(before, policy.head.output.weight)
 
 
-@pytest.mark.parametrize("version,base", [("v3", "v1"), ("v4", "v2_1")])
+@pytest.mark.parametrize("version,base", [("v3", "v1"), ("v3_1", "v2_1"), ("v3_2", "v2")])
 def test_joint_training_updates_vision_while_text_and_clip_projections_stay_frozen(
     config, version, base,
 ):
@@ -225,8 +225,8 @@ def test_joint_training_updates_vision_while_text_and_clip_projections_stay_froz
     config.model.train_vision_encoder = joint.model.train_vision_encoder
     config.model.fusion_layers = joint.model.fusion_layers
     policy = Policy(config.model).train()
-    assert len(policy.head.fusion) == (2 if version == "v4" else 0)
-    assert policy.backbone.use_tokens == (version == "v4")
+    assert len(policy.head.fusion) == joint.model.fusion_layers
+    assert policy.backbone.use_tokens == (joint.model.fusion_layers > 0)
     head_before = policy.head.output.weight.detach().clone()
     vision = policy.backbone.clip.vision_model
     text = policy.backbone.clip.text_model
@@ -248,7 +248,7 @@ def test_joint_training_updates_vision_while_text_and_clip_projections_stay_froz
         optimizer.step()
     assert any(not torch.equal(before[name], p) for name, p in vision.named_parameters())
     assert not torch.equal(head_before, policy.head.output.weight)
-    if version == "v4":
+    if joint.model.fusion_layers:
         assert all(layer.gates.abs().sum() > 0 for layer in policy.head.fusion)
     for name, p in text.named_parameters():
         assert p.grad is None

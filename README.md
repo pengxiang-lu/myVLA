@@ -4,7 +4,7 @@
 
 　　**myVLA 是一个基于 PyTorch 的轻量视觉—语言—动作（VLA）项目**，支持 LIBERO 和 MetaWorld MT50 上的行为克隆训练与闭环评估。模型使用预训练 CLIP 编码图像和语言，通过可训练的动作解码器预测连续动作块。V1、V2 冻结两个编码器；V3 联合训练视觉编码器，语言编码器保持冻结。
 
-　　项目包含 V1 基础版、V2 双向融合版和 V3 视觉联合训练版。V2 分为 V2.0（6 层双向融合）和 V2.1（2 层双向融合），两者均冻结 CLIP。V3 沿用 V1 的结构，无额外视觉—语言交叉注意力融合层，训练时解冻视觉编码器，语言编码器保持冻结。动作解码器均为 4 层，输出 12×7 动作块。下图展示 V2.0 的结构。
+　　项目包含 V1 基础版、V2 双向融合版和 V3 视觉联合训练版。V2 分为 V2.0（6 层双向融合）和 V2.1（2 层双向融合），两者均冻结 CLIP。V3 沿用 V1 的结构，无额外视觉—语言交叉注意力融合层，训练时解冻视觉编码器，语言编码器保持冻结。V3.1、V3.2 分别沿用 V2.1 的 2 层融合、V2.0 的 6 层融合结构，并解冻视觉编码器。V3.1 原名 V4，V3.2 原名 V5；对应配置为 `configs/train_cfg_v3_1.yaml`、`configs/train_cfg_v3_2.yaml`。动作解码器均为 4 层，输出 12×7 动作块。下图展示 V2.0 的结构。
 
 ![myVLA V2.0 模型架构](assets/v2.png)
 
@@ -77,8 +77,8 @@ uv run scripts/inspect_data.py \
 
 ```bash
 uv run src/myvla/train.py \
-  --config configs/train_cfg_v3.yaml \
-  --output-dir outputs/train/libero_spatial_v3
+  --config configs/train_cfg_v3_1.yaml \
+  --output-dir outputs/train/libero_spatial_v3_1
 ```
 
 ### 3.3 MetaWorld MT50 数据准备与训练
@@ -144,9 +144,19 @@ unset UV_PROJECT_ENVIRONMENT
 export LIBERO_ROOT=/home/lpx/python-project/LIBERO
 
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_spatial_v3/checkpoint_10000.pt \
+  --checkpoint outputs/train/libero_spatial_v3_1/checkpoint_10000.pt \
   --suite libero_spatial --episodes 10 --execute-steps 12 \
-  --output-dir outputs/eval/libero_spatial_v3 
+  --output-dir outputs/eval/libero_spatial_v3_1 
+  
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+  --checkpoint outputs/train/libero_spatial_v3_1/checkpoint_8000.pt \
+  --suite libero_spatial --episodes 10 --execute-steps 12 \
+  --output-dir outputs/eval/libero_spatial_v3_1 
+  
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+  --checkpoint outputs/train/libero_spatial_v3_1/checkpoint_6000.pt \
+  --suite libero_spatial --episodes 10 --execute-steps 12 \
+  --output-dir outputs/eval/libero_spatial_v3_1 
 ```
 
 　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--video`（或 `--videos`）保存视频到 `ckpt<步数>/seed<seed>/videos/`。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，默认每次执行完整 12 步预测动作后重新观察；使用旧的 8 步 checkpoint 时，需显式设置 `--execute-steps 8` 或更小的值。
