@@ -30,6 +30,10 @@ torch.set_num_threads(1)
     ("suite", "patterns"),
     [
         ("libero_spatial", ["libero_spatial/*.hdf5"]),
+        ("libero_object", ["libero_object/*.hdf5"]),
+        ("libero_goal", ["libero_goal/*.hdf5"]),
+        ("libero_10", ["libero_10/*.hdf5"]),
+        ("libero_90", ["libero_90/*.hdf5"]),
         ("libero_100", ["libero_90/*.hdf5", "libero_10/*.hdf5"]),
     ],
 )

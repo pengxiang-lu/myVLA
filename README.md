@@ -10,11 +10,32 @@
 
 ## 二、安装教程
 
-### 2.1 安装依赖
+### 2.1 克隆工程
 
-　　预先安装 `uv`，并在项目根目录执行以下命令。
+　　以下命令以 Linux / Bash 环境为例，需要先安装 Git；正式训练还需要 NVIDIA GPU 和可用的驱动。在终端中克隆仓库并进入项目根目录：
 
-​	默认使用 Python 3.10，依赖版本由 `uv.lock` 固定。
+```bash
+git clone https://github.com/pengxiang-lu/myVLA.git
+cd myVLA
+```
+
+　　后续安装、下载、训练和评估命令均在此目录执行。已有工程时直接进入对应目录即可；克隆代码不会下载 LIBERO 数据、CLIP 权重或历史 checkpoint，需按后文单独准备。
+
+### 2.2 安装依赖
+
+　　项目使用 `uv` 管理独立虚拟环境。尚未安装时，先按 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/)执行：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+uv --version
+```
+
+　　默认使用 Python 3.10，依赖版本由 `uv.lock` 固定。在项目根目录准备解释器：
+
+```bash
+uv python install 3.10
+```
 
 ​	LIBERO 和 MetaWorld 的 MuJoCo 版本不同，分别使用独立虚拟环境，不能同时启用 `sim` 和 `mt50`。先用下面的 `uv sync` 安装对应依赖，后续统一使用 `uv run 脚本路径`；`UV_PROJECT_ENVIRONMENT` 决定使用哪个虚拟环境。
 
@@ -28,7 +49,7 @@ uv run scripts/doctor.py
 UV_PROJECT_ENVIRONMENT=.venv-mt50 uv sync --locked --extra mt50
 ```
 
-### 2.2 准备 CLIP 权重
+### 2.3 准备 CLIP 权重
 
 　　两套环境共用同一份 CLIP 权重。下载脚本支持分段续传及校验，默认保存到 `models/clip-vit-base-patch16/`。
 
@@ -37,11 +58,22 @@ unset UV_PROJECT_ENVIRONMENT
 uv run scripts/download_clip.py --workers 4
 ```
 
-　　两份配置均通过相对路径 `models/clip-vit-base-patch16` 加载本地权重，因此命令应在项目根目录运行；权重放在其他位置时修改 `model.backbone`。`HF_HUB_OFFLINE=1` 可选，用于禁止联网检查。
+　　如果运行后出现 curl: (28) Connection timed out after 15000 milliseconds 报错，就用下面命令：
+
+```bash
+# 生成镜像版下载脚本
+sed 's|https://huggingface.co/|https://hf-mirror.com/|g' \
+  scripts/download_clip.py > scripts/download_clip_mirror.py
+
+# 使用项目环境下载
+uv run scripts/download_clip_mirror.py --workers 2
+```
+
+​	两份配置均通过相对路径 `models/clip-vit-base-patch16` 加载本地权重，因此命令应在项目根目录运行；权重放在其他位置时修改 `model.backbone`。`HF_HUB_OFFLINE=1` 可选，用于禁止联网检查。
 
 ​	正式训练需要可用的 CUDA；CPU 调试需同时设置 `train.device: cpu` 和 `train.precision: fp32`。
 
-### 2.3 准备 LIBERO 源码
+### 2.4 准备 LIBERO 源码
 
 　　LIBERO 闭环评估需要源码和仿真资源。没有源码时，将官方仓库克隆到默认查找位置；已有源码可跳过克隆，通过 `LIBERO_ROOT` 指定目录。
 
@@ -62,14 +94,15 @@ uv run scripts/sim_smoke.py
 
 ```bash
 unset UV_PROJECT_ENVIRONMENT
+# 下载spatial
 uv run scripts/download_data.py \
-  --suite libero_spatial --directory data
-
-uv run scripts/inspect_data.py \
-  --data-dir data/libero_spatial
+  --suite libero_spatial \
+  --directory data \
+  --endpoint https://hf-mirror.com \
+  --max-workers 2 
 ```
 
-　　下载中断后可重跑同一命令续传。网络需要时，可追加 `--endpoint https://hf-mirror.com --max-workers 2`。已有原始 LIBERO HDF5 数据可直接通过配置中的 `data.directory` 指定路径。
+​	下载命令的 `--suite` 支持 `libero_spatial`、`libero_object`、`libero_goal`、`libero_10`、`libero_90` 和 `libero_100`。其中 `libero_10` 单独下载 LIBERO-10（Long）；`libero_100` 会同时下载 `libero_90` 和 `libero_10`，并分别保存到对应子目录。
 
 ### 3.2 LIBERO 模型训练
 
@@ -114,7 +147,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 # 恢复 LIBERO 训练
 unset UV_PROJECT_ENVIRONMENT
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --resume outputs/train/libero_spatial_v1/checkpoint_20000.pt
+  --resume outputs/train/libero_spatial_v3_2/checkpoint_20000.pt
 
 # 恢复 MT50 训练
 export UV_PROJECT_ENVIRONMENT=.venv-mt50
@@ -263,3 +296,15 @@ HF_HUB_OFFLINE=1 uv run scripts/measure_inference_time.py \
 | 计算精度           | FP16 autocast       | 策略参数 FP32，DINOv3 使用 BF16 autocast |
 | 梯度裁剪           | 1.0                 | 1.0                                      |
 | 训练 seed          | 42                  | 42                                       |
+
+## 附：
+
+​	百度飞桨AI Studio的uv安装：
+
+```bash
+pip install uv				
+	
+alias uv='python -m uv'		
+uv --version
+```
+

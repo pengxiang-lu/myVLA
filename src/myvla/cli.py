@@ -218,7 +218,10 @@ def main(argv=None):
     p.add_argument(
         "--suite",
         default="libero_spatial",
-        choices=["libero_spatial", "libero_object", "libero_goal", "libero_100", "metaworld_mt50"],
+        choices=[
+            "libero_spatial", "libero_object", "libero_goal", "libero_10", "libero_90",
+            "libero_100", "metaworld_mt50",
+        ],
     )
     p.add_argument("--directory", default="data")
     p.add_argument("--libero-root")
