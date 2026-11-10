@@ -2,9 +2,7 @@
 
 ## 一、简介
 
-　　**myVLA 是一个基于 PyTorch 的轻量视觉—语言—动作（VLA）项目**，支持 LIBERO 和 MetaWorld MT50 上的行为克隆训练与闭环评估。模型使用预训练 CLIP 编码图像和语言，通过可训练的动作解码器预测连续动作块。V1、V2 冻结两个编码器；V3 联合训练视觉编码器，语言编码器保持冻结。
-
-　　项目包含 V1 基础版、V2 双向融合版和 V3 视觉联合训练版。V2 分为 V2.0（6 层双向融合）和 V2.1（2 层双向融合），两者均冻结 CLIP。V3 沿用 V1 的结构，无额外视觉—语言交叉注意力融合层，训练时解冻视觉编码器，语言编码器保持冻结。V3.1、V3.2 分别沿用 V2.1 的 2 层融合、V2.0 的 6 层融合结构，并解冻视觉编码器。V3.1 原名 V4，V3.2 原名 V5；对应配置为 `configs/train_cfg_v3_1.yaml`、`configs/train_cfg_v3_2.yaml`。动作解码器均为 4 层，输出 12×7 动作块。下图展示 V2.0 的结构。
+　　**myVLA 是一个基于 PyTorch 的轻量视觉—语言—动作（VLA）项目**，支持 LIBERO 和 MetaWorld MT50 上的行为克隆训练与闭环评估。模型使用预训练 CLIP 编码图像和语言，通过可训练的动作解码器预测连续动作块。
 
 ![myVLA V2.0 模型架构](assets/v2.png)
 
@@ -138,8 +136,6 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 　　导入目标目录必须不存在。当前导入器支持 LeRobot v3 内嵌 RGB，不支持旧版 v2 或视频存储。`--dataset metaworld` 自动切换相机数量、状态/动作维度和默认数据目录，V1、V2 均可使用；数据在其他位置时追加 `--data-dir`。上述 V2 命令默认训练 30,000 步，输出为 `outputs/train/metaworld_mt50_v2`；其输入输出维度与 LIBERO 不同，需要独立训练。
 
 ### 3.4 参数设置与断点恢复
-
-​	训练结果统一保存到 `outputs/train/<实验名>/`，评估结果保存到 `outputs/eval/<实验名>/ckpt<步数>/seed<seed>/`。所有演示均参与训练，不划分验证集、不计算验证 loss，也不自动启动仿真评估。训练目录保存 `checkpoint_<步数>.pt`、`log.jsonl` 和训练损失图 `loss_curve.png` 等文件；默认每 2,000 步及训练结束保存一份独立 checkpoint，例如 `checkpoint_2000.pt`、`checkpoint_4000.pt`，其中包含 RAW 和已启用的 EMA 权重。结束步数不是 2,000 的倍数时也会保存，例如 `checkpoint_13500.pt`。新训练不再生成 `latest.pt` 或 `best.pt`；历史文件保留。使用指定步数的 checkpoint 恢复训练。旧版训练日志 `metrics.jsonl` 在续训时自动改名为 `log.jsonl`，保留已有记录。训练目录仍保存训练配置 `config.yaml`。仅传 `--resume` 时，默认继续写入 checkpoint 所在目录，也可通过 `--output-dir` 指定其他目录。
 
 　　若要从已有权重开始 EMA 微调，需使用开启 EMA 的配置和 `--init-checkpoint`，并指定新的输出目录；该操作重置优化器和 EMA 更新次数。有 EMA 的初始化 checkpoint 默认使用 EMA 权重作为微调起点。
 
