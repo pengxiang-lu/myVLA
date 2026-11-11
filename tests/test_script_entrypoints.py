@@ -39,7 +39,7 @@ def test_train_script_from_another_directory(monkeypatch, tmp_path):
     script.main(
         [
             "--config",
-            "configs/train_cfg_v2.yaml",
+            "configs/train_cfg_v1_2.yaml",
             "--dataset",
             "metaworld",
             "--steps",

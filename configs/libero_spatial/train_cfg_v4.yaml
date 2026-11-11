@@ -1,5 +1,6 @@
-# V3: V1 architecture with trainable CLIP vision; text stays frozen.
-# Effective batch remains 64; smaller micro batches reduce activation memory.
+# V4: V2.2 with eight bidirectional cross-attention fusion blocks.
+# CLIP vision is trainable; text and original CLIP projections stay frozen.
+# Training settings follow V2; effective batch remains 64.
 model:
   backbone: models/clip-vit-base-patch16
   revision: 57c216476eefef5ab752ec549e440a49ae4ae5f3
@@ -10,7 +11,7 @@ model:
   heads: 8
   chunk_size: 12
   dropout: 0.1
-  fusion_layers: 0
+  fusion_layers: 8
   state_dim: 8
   action_dim: 7
   cameras: 2
@@ -21,7 +22,7 @@ data:
   flip_vertical: true
   dataset: libero
 train:
-  output_dir: outputs/train/libero_spatial_v3
+  output_dir: outputs/train/libero_spatial_v4
   device: cuda
   precision: fp16
   batch_size: 16

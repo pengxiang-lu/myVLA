@@ -1,4 +1,4 @@
-# V2.1: two fusion layers; LIBERO-Spatial by default.
+# V1.2: six fusion layers; LIBERO-Spatial by default.
 # Run commands from the project root.
 model:
   backbone: models/clip-vit-base-patch16
@@ -10,7 +10,7 @@ model:
   heads: 8
   chunk_size: 12
   dropout: 0.1
-  fusion_layers: 2
+  fusion_layers: 6
   state_dim: 8
   action_dim: 7
   cameras: 2
@@ -20,7 +20,7 @@ data:
   flip_vertical: true
   dataset: libero
 train:
-  output_dir: outputs/train/libero_spatial_v2_1
+  output_dir: outputs/train/libero_spatial_v1_2
   device: cuda
   precision: fp16
   batch_size: 16

@@ -111,6 +111,33 @@ def test_single_demonstration_can_train(config):
     checkpoint = load_checkpoint(train(config))
     assert checkpoint["step"] == config.train.steps
     assert len(checkpoint["manifest"]) == 1
+    assert checkpoint["config"]["train"]["gpu_name"] is None
+    assert load_config(Path(config.train.output_dir) / "config.yaml").train.gpu_name is None
+
+
+@pytest.mark.parametrize("device_name", ["cuda", "cuda:1"])
+def test_training_detects_selected_gpu(config, monkeypatch, device_name):
+    import myvla.train as training
+
+    config.train.device = device_name
+    config.train.precision = "fp32"
+    monkeypatch.setattr(training, "resolve_device", torch.device)
+    queried = []
+
+    def get_device_name(device):
+        queried.append(device)
+        return "NVIDIA Test GPU"
+
+    def stop_before_loading_data(*args):
+        raise RuntimeError("stop before loading data")
+
+    monkeypatch.setattr(torch.cuda, "get_device_name", get_device_name)
+    monkeypatch.setattr(training, "seed_everything", lambda _: None)
+    monkeypatch.setattr(training, "scan_episodes", stop_before_loading_data)
+    with pytest.raises(RuntimeError, match="stop before loading data"):
+        train(config)
+    assert queried == [torch.device(device_name)]
+    assert config.train.gpu_name == "NVIDIA Test GPU"
 
 
 def test_resume_renames_legacy_training_log_and_preserves_history(config):
@@ -119,8 +146,13 @@ def test_resume_renames_legacy_training_log_and_preserves_history(config):
     history = log.read_text()
     legacy = log.with_name("metrics.jsonl")
     log.rename(legacy)
+    # Hardware metadata may change when resuming on another device.
+    saved = load_checkpoint(checkpoint)
+    saved["config"]["train"]["gpu_name"] = "Previous GPU"
+    torch.save(saved, checkpoint)
     config.train.steps = 4
     train(config, resume=checkpoint)
+    assert load_config(checkpoint.parent / "config.yaml").train.gpu_name is None
     assert not legacy.exists()
     assert log.read_text().startswith(history)
     assert [json.loads(line)["step"] for line in log.read_text().splitlines()] == [1, 2, 3, 4]
@@ -219,7 +251,7 @@ def test_frozen_backbone_and_output(config):
 
 @pytest.mark.parametrize(
     "version,base,fusion_layers",
-    [("v3", "v1", 0), ("v3_1", "v2_1", 2), ("v3_2", "v2", 6), ("v4", "v3_2", 8)],
+    [("v2", "v1", 0), ("v2_1", "v1_1", 2), ("v2_2", "v1_2", 6), ("v4", "v2_2", 8)],
 )
 def test_joint_training_updates_vision_while_text_and_clip_projections_stay_frozen(
     config, version, base, fusion_layers,

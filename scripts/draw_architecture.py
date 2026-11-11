@@ -1,4 +1,4 @@
-"""Draw a compact, large-label overview of the implemented LIBERO V2 policy."""
+"""Draw a compact, large-label overview of the implemented LIBERO V1 fusion policies."""
 
 import argparse
 from pathlib import Path
@@ -13,9 +13,9 @@ from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, Rectangle
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--version", choices=["v2_0", "v2_1"], default="v2_0")
+parser.add_argument("--version", choices=["v1_1", "v1_2"], default="v1_2")
 args = parser.parse_args()
-suffix = "v2" if args.version == "v2_0" else "v2_1"
+suffix = args.version
 MODEL = yaml.safe_load((ROOT / f"configs/train_cfg_{suffix}.yaml").read_text())["model"]
 OUT = ROOT / "assets"
 OUT.mkdir(exist_ok=True)

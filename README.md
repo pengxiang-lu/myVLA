@@ -4,7 +4,7 @@
 
 　　**myVLA 是一个基于 PyTorch 的轻量视觉—语言—动作（VLA）项目**，支持 LIBERO 和 MetaWorld MT50 上的行为克隆训练与闭环评估。模型使用预训练 CLIP 编码图像和语言，通过可训练的动作解码器预测连续动作块。
 
-![myVLA V2.0 模型架构](assets/v2.png)
+![myVLA V1.2 模型架构](assets/v1_2.png)
 
 ## 二、安装教程
 
@@ -86,8 +86,6 @@ uv run scripts/sim_smoke.py
 
 ## 三、训练
 
-　　直接运行 `src/myvla/train.py` 训练、`src/myvla/evaluate.py` 评估，参数跟在脚本名后。在项目根目录使用下面的完整路径；在 `src/myvla/` 目录也可运行 `uv run train.py ...` 或 `uv run evaluate.py ...`。脚本会切换到项目根目录，相对的配置、数据、模型及输出路径均以项目根目录解释。
-
 ### 3.1 LIBERO 数据准备
 
 ```bash
@@ -108,11 +106,11 @@ uv run scripts/download_data.py \
 
 ```bash
 uv run src/myvla/train.py \
-  --config configs/train_cfg_v3_2.yaml \
-  --output-dir outputs/train/libero_spatial_v3_2
+  --config configs/train_cfg_v4.yaml \
+  --output-dir outputs/train/libero_spatial_v4
 ```
 
-V4 在 V3.2 基础上使用 8 层双向交叉注意力融合块，继续训练 CLIP 视觉编码器，文本编码器保持冻结，其余训练设置一致。使用独立配置和输出目录从头训练：
+V4 在 V2.2 基础上使用 8 层双向交叉注意力融合块，继续训练 CLIP 视觉编码器，文本编码器保持冻结，其余训练设置一致。使用独立配置和输出目录从头训练：
 
 ```bash
 HF_HUB_OFFLINE=1 .venv/bin/python src/myvla/train.py \
@@ -138,10 +136,10 @@ uv run scripts/inspect_data.py \
   --dataset metaworld --data-dir data/metaworld_mt50
 
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --config configs/train_cfg_v2.yaml --dataset metaworld
+  --config configs/train_cfg_v1_2.yaml --dataset metaworld
 ```
 
-　　导入目标目录必须不存在。当前导入器支持 LeRobot v3 内嵌 RGB，不支持旧版 v2 或视频存储。`--dataset metaworld` 自动切换相机数量、状态/动作维度和默认数据目录，V1、V2 均可使用；数据在其他位置时追加 `--data-dir`。上述 V2 命令默认训练 30,000 步，输出为 `outputs/train/metaworld_mt50_v2`；其输入输出维度与 LIBERO 不同，需要独立训练。
+　　导入目标目录必须不存在。当前导入器支持 LeRobot v3 内嵌 RGB，不支持旧版 v2 或视频存储。`--dataset metaworld` 自动切换相机数量、状态/动作维度和默认数据目录，各版本均可使用；数据在其他位置时追加 `--data-dir`。上述 V1.2 命令默认训练 30,000 步，输出为 `outputs/train/metaworld_mt50_v1_2`；其输入输出维度与 LIBERO 不同，需要独立训练。
 
 ### 3.4 参数设置与断点恢复
 
@@ -151,12 +149,12 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 # 恢复 LIBERO 训练
 unset UV_PROJECT_ENVIRONMENT
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --resume outputs/train/libero_spatial_v3_2/checkpoint_20000.pt
+  --resume outputs/train/libero_spatial_v2_2/checkpoint_20000.pt
 
 # 恢复 MT50 训练
 export UV_PROJECT_ENVIRONMENT=.venv-mt50
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --resume outputs/train/metaworld_mt50_v2/checkpoint_30000.pt
+  --resume outputs/train/metaworld_mt50_v1_2/checkpoint_30000.pt
 ```
 
 　	如果需要指定训练终止步数，添加--steps参数。
@@ -164,7 +162,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 ```bash
 # 已完成 20,000 步，再追加 20,000 步；从 checkpoint 保存的步数继续到累计 40,000 步
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --resume outputs/train/libero_spatial_v2/checkpoint_20000.pt \
+  --resume outputs/train/libero_spatial_v1_2/checkpoint_20000.pt \
   --steps 40000
 ```
 
@@ -179,12 +177,11 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 ```bash
 unset UV_PROJECT_ENVIRONMENT
 export LIBERO_ROOT=/home/lpx/python-project/LIBERO	# 如果LIBERO放在其他位置
-export LIBERO_ROOT=third_party/LIBERO				# 如果正常下载
 
-HF_HUB_OFFLINE=1 MUJOCO_GL=egl .venv/bin/python src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_spatial_v3_2/checkpoint_10000.pt \
-  --suite libero_spatial --episodes 10 --execute-steps 12 \
-  --output-dir outputs/eval/libero_spatial_v3_2
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+  --checkpoint outputs/train/libero_spatial_v2_2/checkpoint_6000.pt \
+  --suite libero_object --episodes 10 --execute-steps 12 \
+  --output-dir outputs/eval/libero_object_v2_2
 ```
 
 　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--video`（或 `--videos`）保存视频到 `ckpt<步数>/seed<seed>/videos/`。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，默认每次执行完整 12 步预测动作后重新观察；使用旧的 8 步 checkpoint 时，需显式设置 `--execute-steps 8` 或更小的值。
@@ -202,9 +199,9 @@ HF_HUB_OFFLINE=1 MUJOCO_GL=egl .venv/bin/python src/myvla/evaluate.py \
 export UV_PROJECT_ENVIRONMENT=.venv-mt50
 
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/metaworld_mt50_v2/checkpoint_30000.pt \
+  --checkpoint outputs/train/metaworld_mt50_v1_2/checkpoint_30000.pt \
   --episodes 50 --execute-steps 1 --protocol lerobot \
-  --output-dir outputs/eval/metaworld_mt50_v2
+  --output-dir outputs/eval/metaworld_mt50_v1_2
 ```
 
 　　默认评估 50 个任务，每任务 50 回合，每回合最多 500 步。`--protocol lerobot` 使用可复现的随机位置；`--protocol benchmark` 使用 MetaWorld MT50 提供的 goal，每任务最多 50 个。快速检查可追加 `--tasks 0 --episodes 2 --horizon 50`，保存视频使用 `--video`（或 `--videos`）。
@@ -214,7 +211,7 @@ HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
 输出目录按实验名和 checkpoint 步数组织。例如上述命令生成：
 
 ```text
-outputs/eval/libero_spatial_v2_1/
+outputs/eval/libero_spatial_v1_1/
 └── ckpt10000/
     └── seed42/
         ├── progress.json
@@ -255,42 +252,6 @@ HF_HUB_OFFLINE=1 uv run scripts/measure_inference_time.py \
 ​	计时包含视觉编码、语言编码、融合、动作头及 GPU 上的动作反归一化、夹爪转换和裁剪；不包含模型加载、输入准备和传输、输出拷回 CPU、通信或环境执行。为包含完整语言编码，脚本绕过正常评估的语言缓存，每次重新执行文本编码器。
 
 ​	默认使用 FP32；可通过 `--precision fp16` 或 `bf16` 测试混合精度，通过 `--warmup` 和 `--runs` 调整预热与测量次数。输出的每秒动作块预测次数由中位延迟换算，不代表机械臂实际控制频率。
-
-
-
-| 项目           | 你的 V1 / V2                  | TurboVLA LIBERO                           |
-| -------------- | ----------------------------- | ----------------------------------------- |
-| 训练数据       | 仅 Spatial，10 个任务         | Spatial、Object、Goal、Long，共 40 个任务 |
-| 数据处理       | 原始 HDF5，全部演示参与训练 | 去除无效动作的 `no_noops` RLDS 数据       |
-| 图像尺寸       | 224×224，双相机               | 256×256，双相机                           |
-| 视觉编码器     | **CLIP ViT-B/16，冻结**       | **DINOv3 ViT-B，参与训练**                |
-| 语言编码器     | CLIP 文本编码器，冻结         | BERT，冻结                                |
-| 融合模块初始化 | 随机初始化；V1 无融合         | 从 **GroundingDINO** 加载相关预训练参数   |
-| 融合层数       | V1：0；V2.0：6；V2.1：2                  | 6                                         |
-| 动作解码层数   | 4                             | 3                                         |
-| 动作预测长度   | 12                            | 12                                        |
-| 损失           | 前六维 Smooth L1 + 夹爪 BCE   | 七维动作的 masked L1                      |
-| 动作归一化     | 前六维均值／标准差            | 前六维 min/max 映射至 `[-1,1]`            |
-| 图像增强       | 平移 4 像素，颜色扰动 0.1     | 本地数据加载路径未见随机图像增强          |
-
-优化器和训练计划也不同：
-
-| 参数               | 你的 V1 / V2        | TurboVLA 官方方案                        |
-| ------------------ | ------------------- | ---------------------------------------- |
-| GPU 数量           | 单卡                | 4 卡                                     |
-| 每卡 batch         | 16                  | 8                                        |
-| 梯度累积           | 4                   | 4                                        |
-| **全局有效 batch** | **64**              | **128**                                  |
-| 总训练步数         | 20,000              | 40,000¹                                  |
-| 峰值学习率         | `1e-4`              | `5e-5`                                   |
-| Warmup             | 500 步              | 10,000 步                                |
-| Warmup 后学习率    | 余弦下降至约 `1e-5` | 保持峰值                                 |
-| Weight decay       | `1e-3`              | `1e-10`                                  |
-| AdamW betas        | `(0.9, 0.999)`      | `(0.9, 0.95)`                            |
-| EMA 参数滑动平均   | 无                  | 有，衰减系数 `0.999`                     |
-| 计算精度           | FP16 autocast       | 策略参数 FP32，DINOv3 使用 BF16 autocast |
-| 梯度裁剪           | 1.0                 | 1.0                                      |
-| 训练 seed          | 42                  | 42                                       |
 
 ## 附：
 

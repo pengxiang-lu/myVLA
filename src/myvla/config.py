@@ -34,6 +34,7 @@ class DataConfig:
 class TrainConfig:
     output_dir: str = "outputs/train/libero_spatial_v1"
     device: str = "cuda"
+    gpu_name: str | None = None  # Detected at runtime; null for CPU training.
     precision: str = "fp16"
     batch_size: int = 2
     grad_accumulation: int = 8
@@ -67,13 +68,13 @@ class Config:
         meta = dataset == "metaworld"
         suite = "metaworld_mt50" if meta else "libero_spatial"
         if self.model.train_vision_encoder:
-            model_version = {0: "v3", 2: "v3_1", 6: "v3_2", 8: "v4"}.get(
-                self.model.fusion_layers, "v3"
+            model_version = {0: "v2", 2: "v2_1", 6: "v2_2", 8: "v4"}.get(
+                self.model.fusion_layers, "v2"
             )
         elif self.model.fusion_layers == 2:
-            model_version = "v2_1"
+            model_version = "v1_1"
         else:
-            model_version = "v2" if self.model.fusion_layers else "v1"
+            model_version = "v1_2" if self.model.fusion_layers else "v1"
         return replace(
             self,
             model=replace(

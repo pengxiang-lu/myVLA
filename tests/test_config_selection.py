@@ -9,7 +9,7 @@ from myvla.config import load_config
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 
 
-@pytest.mark.parametrize("version", ["v1", "v2", "v2_1", "v3", "v3_1", "v3_2", "v4"])
+@pytest.mark.parametrize("version", ["v1", "v1_1", "v1_2", "v2", "v2_1", "v2_2", "v4"])
 def test_dataset_selection_preserves_architecture_and_training(version):
     original = load_config(CONFIGS / f"train_cfg_{version}.yaml")
     meta = original.for_dataset("metaworld")
@@ -58,7 +58,7 @@ def test_training_cli_dataset_and_directory_overrides(monkeypatch):
 
 
 def test_resume_cannot_switch_dataset(monkeypatch):
-    config = load_config(CONFIGS / "train_cfg_v2.yaml")
+    config = load_config(CONFIGS / "train_cfg_v1_2.yaml")
     monkeypatch.setattr(training, "load_checkpoint", lambda _: {"config": config.to_dict()})
     monkeypatch.setattr(
         "sys.argv",

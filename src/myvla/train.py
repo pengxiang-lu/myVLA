@@ -217,6 +217,7 @@ def train(config, resume=None, init_checkpoint=None):
         raise ValueError("Use either resume or init_checkpoint, not both")
     t = config.train
     device = resolve_device(t.device)
+    t.gpu_name = torch.cuda.get_device_name(device) if device.type == "cuda" else None
     if device.type == "cpu" and t.precision != "fp32":
         raise ValueError("CPU runs require precision=fp32")
     if device.type == "cuda" and t.precision == "bf16" and not torch.cuda.is_bf16_supported():
@@ -257,7 +258,7 @@ def train(config, resume=None, init_checkpoint=None):
             raise ValueError("Resume cannot reduce the configured training steps")
         old.train.steps = t.steps
         # Operational settings can change without changing optimization.
-        for key in ("output_dir", "device", "workers", "log_every", "save_every"):
+        for key in ("output_dir", "device", "gpu_name", "workers", "log_every", "save_every"):
             setattr(old.train, key, getattr(t, key))
         # Accept a requested branch only if the rest matches; load the saved immutable commit.
         config.model.revision = old.model.revision
@@ -493,7 +494,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Train V1, V2, V3 (including V3.1/V3.2) or V4 on LIBERO or MetaWorld MT50.",
+        description=(
+            "Train V1 (including V1.1/V1.2), V2 (including V2.1/V2.2) or V4 "
+            "on LIBERO or MetaWorld MT50."
+        ),
         epilog="Relative config, data, model and output paths use the project root.",
     )
     add_train_arguments(parser)
