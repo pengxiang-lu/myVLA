@@ -12,3 +12,4 @@ models/
 .venv-mt50/
 .agents
 .codex
+tmp/
