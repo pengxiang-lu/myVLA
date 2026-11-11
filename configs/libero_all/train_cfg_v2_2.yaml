@@ -24,15 +24,15 @@ train:
   output_dir: outputs/train/libero_all_v2_2
   device: cuda
   precision: fp16
-  batch_size: 16
+  batch_size: 64
   grad_accumulation: 4
   workers: 2
-  steps: 40000
+  steps: 10000
   lr: 0.0001
   weight_decay: 0.001
   warmup_steps: 500
   grad_clip: 1.0
-  save_every: 8000
+  save_every: 2000
   log_every: 20
   seed: 42
   image_shift: 0
