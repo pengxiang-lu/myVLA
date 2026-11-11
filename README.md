@@ -112,6 +112,14 @@ uv run src/myvla/train.py \
   --output-dir outputs/train/libero_spatial_v3_2
 ```
 
+V4 在 V3.2 基础上使用 8 层双向交叉注意力融合块，继续训练 CLIP 视觉编码器，文本编码器保持冻结，其余训练设置一致。使用独立配置和输出目录从头训练：
+
+```bash
+HF_HUB_OFFLINE=1 .venv/bin/python src/myvla/train.py \
+  --config configs/train_cfg_v4.yaml \
+  --output-dir outputs/train/libero_spatial_v4
+```
+
 ### 3.3 MetaWorld MT50 数据准备与训练
 
 　　切换到 MT50 环境，下载官方 LeRobot v3 图像/parquet 数据，并导入为训练使用的 HDF5。完整原始数据约 45.9GB，还需预留转换后的空间；将 `/path/to/datasets` 改为实际下载位置。
@@ -170,22 +178,13 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 
 ```bash
 unset UV_PROJECT_ENVIRONMENT
-export LIBERO_ROOT=/home/lpx/python-project/LIBERO
+export LIBERO_ROOT=/home/lpx/python-project/LIBERO	# 如果LIBERO放在其他位置
+export LIBERO_ROOT=third_party/LIBERO				# 如果正常下载
 
-HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_spatial_v3_1/checkpoint_10000.pt \
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl .venv/bin/python src/myvla/evaluate.py \
+  --checkpoint outputs/train/libero_spatial_v3_2/checkpoint_10000.pt \
   --suite libero_spatial --episodes 10 --execute-steps 12 \
-  --output-dir outputs/eval/libero_spatial_v3_1 
-  
-HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_spatial_v3_1/checkpoint_8000.pt \
-  --suite libero_spatial --episodes 10 --execute-steps 12 \
-  --output-dir outputs/eval/libero_spatial_v3_1 
-  
-HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_spatial_v3_1/checkpoint_6000.pt \
-  --suite libero_spatial --episodes 10 --execute-steps 12 \
-  --output-dir outputs/eval/libero_spatial_v3_1 
+  --output-dir outputs/eval/libero_spatial_v3_2
 ```
 
 　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--video`（或 `--videos`）保存视频到 `ckpt<步数>/seed<seed>/videos/`。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，默认每次执行完整 12 步预测动作后重新观察；使用旧的 8 步 checkpoint 时，需显式设置 `--execute-steps 8` 或更小的值。
@@ -304,3 +303,4 @@ alias uv='python -m uv'
 uv --version
 ```
 
+​	需要把uv run命令换成.venv/bin/python

@@ -493,7 +493,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Train V1, V2 or V3 (including V3.1/V3.2) on LIBERO or MetaWorld MT50.",
+        description="Train V1, V2, V3 (including V3.1/V3.2) or V4 on LIBERO or MetaWorld MT50.",
         epilog="Relative config, data, model and output paths use the project root.",
     )
     add_train_arguments(parser)

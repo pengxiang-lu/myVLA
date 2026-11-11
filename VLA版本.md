@@ -3,7 +3,7 @@
 ## VLA雏形：
 
 - 输入：224×224 双相机 RGB 图像、任务语言、8 维机器人状态。
-- 视觉编码器：预训练 CLIP ViT-B/16，V1/V2 冻结，V3/V3.1/V3.2 参与训练。
+- 视觉编码器：预训练 CLIP ViT-B/16，V1/V2 冻结，V3/V3.1/V3.2/V4 参与训练。
 - 文本编码器：CLIP 文本编码器，所有版本均保持冻结。
 - 输出：当前各版本训练配置均为 `chunk_size: 12`，输出 12×7 动作块。
 - 损失函数：前 6 维 Smooth L1，夹爪 BCE；排除轨迹尾部 padding。
@@ -136,6 +136,16 @@ V2 分为 V2.0（6 层）和 V2.1（2 层），均指双向交叉注意力融合
 - 训练参数沿用 V3.1 默认配置：动作头/融合层学习率 `1e-4`、视觉编码器学习率 `1e-5`，batch=16、梯度累积=4，训练 10,000 步，每 2,000 步保存 checkpoint。
 - 版本命名统一：V3 为无融合层，V3.1（原 V4）为 2 层融合，V3.2（原 V5）为 6 层融合，三者均训练视觉编码器。
 
+## V4：八层融合与视觉编码器联合训练
+
+在 V3.2 的基础上，将双向视觉—语言交叉注意力融合块从 6 层增加到 8 层（`fusion_layers: 8`）。CLIP 视觉编码器继续参与训练，文本编码器及 CLIP 原始投影层保持冻结；动作解码器仍为 4 层，输出仍为 12×7 动作块。
+
+- 配置：`configs/train_cfg_v4.yaml`。
+- 输出目录：`outputs/train/libero_spatial_v4`。
+- 其余训练设置与 V3.2 一致：融合层/动作头学习率 `1e-4`、视觉编码器学习率 `1e-5`，batch=16、梯度累积=4（有效 batch=64），训练 10,000 步，EMA 衰减 `0.999`，每 2,000 步保存 checkpoint。
+- 使用全部训练数据，不划分验证集，不计算验证 loss，不启动定期仿真评估。
+- 本次 V4 是新增的 8 层融合版本；历史记录中“V3.1（原 V4）”指此前的 2 层融合版本。
+
 ## 验证成功率：
 
 ​	以下记录各次评估在 **LIBERO-Spatial** 上的闭环成功率。列头为 checkpoint 的实际训练步数；“—”表示暂无评估结果。模型版本依据评估配置中的架构与 checkpoint 路径判定，不仅依据输出目录名。
@@ -150,6 +160,7 @@ V2 分为 V2.0（6 层）和 V2.1（2 层），均指双向交叉注意力融合
 | V3 | [89%](outputs/eval/libero_spatial_v3/ckpt6000/seed42/log.json) | [87%](outputs/eval/libero_spatial_v3/ckpt8000/seed42/log.json) | [92%](outputs/eval/libero_spatial_v3/ckpt10000/seed42/log.json) |
 | V3.1 | [88%](outputs/eval/libero_spatial_v3_1/ckpt6000/seed42/log.json) | [86%](outputs/eval/libero_spatial_v3_1/ckpt8000/seed42/log.json) | [85%](outputs/eval/libero_spatial_v3_1/ckpt10000/seed42/log.json) |
 | V3.2 | — | — | — |
+| V4 | — | — | — |
 
 ​	本表 V3 为本次全量数据重新训练后的结果，已替换原有历史记录。本次结果已由 `log.json` 和逐回合的 `progress.json` 交叉核对；总成功率相同不表示两种模型在各任务、各回合上的表现相同。
 

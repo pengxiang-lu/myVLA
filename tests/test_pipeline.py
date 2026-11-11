@@ -217,14 +217,18 @@ def test_frozen_backbone_and_output(config):
     assert not torch.equal(before, policy.head.output.weight)
 
 
-@pytest.mark.parametrize("version,base", [("v3", "v1"), ("v3_1", "v2_1"), ("v3_2", "v2")])
+@pytest.mark.parametrize(
+    "version,base,fusion_layers",
+    [("v3", "v1", 0), ("v3_1", "v2_1", 2), ("v3_2", "v2", 6), ("v4", "v3_2", 8)],
+)
 def test_joint_training_updates_vision_while_text_and_clip_projections_stay_frozen(
-    config, version, base,
+    config, version, base, fusion_layers,
 ):
     configs = Path(__file__).resolve().parents[1] / "configs"
     joint = load_config(configs / f"train_cfg_{version}.yaml")
     baseline = load_config(configs / f"train_cfg_{base}.yaml")
     baseline.model.train_vision_encoder = True
+    baseline.model.fusion_layers = fusion_layers
     assert joint.model == baseline.model
     config.model.train_vision_encoder = joint.model.train_vision_encoder
     config.model.fusion_layers = joint.model.fusion_layers
