@@ -1,7 +1,6 @@
 """Measure resident-input, complete-action-chunk latency without a simulator."""
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -19,13 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def prepare_text(backbone, language, device):
-    if backbone.tokenizer is not None:
-        return backbone.tokenizer(
-            language, return_tensors="pt", truncation=True, max_length=77
-        ).to(device)
-    digest = hashlib.sha256(language.encode()).digest()[:16]
-    ids = [1] + [3 + b % 125 for b in digest] + [2]
-    return {"input_ids": torch.tensor([ids], device=device)}
+    return backbone.tokenize(language, device)
 
 
 def predict_chunk(policy, images, state, text_inputs):
@@ -35,10 +28,7 @@ def predict_chunk(policy, images, state, text_inputs):
     text cache used by normal rollouts, so the timing includes language encoding.
     """
     backbone = policy.backbone
-    vision = backbone.clip.vision_model(
-        pixel_values=images.flatten(0, 1)
-    ).last_hidden_state[:, 1:]
-    vision = vision.reshape(*images.shape[:2], -1, backbone.vision_dim).float()
+    vision = backbone.encode_vision(images)
     text = backbone.clip.text_model(**text_inputs)
     if not backbone.use_tokens:
         return policy.head(vision, text.pooler_output.float(), state)
@@ -126,6 +116,8 @@ def benchmark(args):
         "cameras": m.cameras,
         "fusion_layers": m.fusion_layers,
         "train_vision_encoder": m.train_vision_encoder,
+        "action_head": m.action_head,
+        "flow_steps": m.flow_steps if m.action_head == "flow_matching" else None,
         "chunk_size": m.chunk_size,
         "output_shape": shape,
         "language": language,

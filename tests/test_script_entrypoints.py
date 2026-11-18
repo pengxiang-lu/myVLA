@@ -16,7 +16,7 @@ def load_script(name):
 @pytest.mark.parametrize("override", [None, "outputs/train/continued"])
 def test_resume_uses_relocated_checkpoint_directory(monkeypatch, tmp_path, override):
     script = load_script("train")
-    config = script.load_config(ROOT / "configs/train_cfg_v1.yaml").to_dict()
+    config = script.load_config(ROOT / "configs/libero_spatial/train_cfg_v1.yaml").to_dict()
     config["train"]["output_dir"] = "runs/old_location"
     config["train"]["save_every"] = 1000
     monkeypatch.setattr(script, "load_checkpoint", lambda _: {"config": config})
@@ -39,7 +39,7 @@ def test_train_script_from_another_directory(monkeypatch, tmp_path):
     script.main(
         [
             "--config",
-            "configs/train_cfg_v1_2.yaml",
+            "configs/libero_spatial/train_cfg_v1_2.yaml",
             "--dataset",
             "metaworld",
             "--steps",
@@ -146,6 +146,7 @@ def test_evaluation_script_preserves_explicit_options(monkeypatch, tmp_path, vid
     [
         ["--dataset", "libero"],
         ["--suite", "libero_spatial"],
+        ["--suite", "libero_all"],
         ["--libero-root", "/tmp/libero"],
     ],
 )
@@ -157,4 +158,30 @@ def test_evaluation_script_rejects_wrong_dataset_options(monkeypatch, tmp_path, 
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit) as exc:
         script.main(["--checkpoint", "best.pt", "--output-dir", "eval", *options])
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("entrypoint", ["evaluate", "cli"])
+def test_evaluation_entrypoints_support_all_suites(monkeypatch, entrypoint):
+    script = load_script(entrypoint)
+    monkeypatch.setattr(
+        libero_evaluation, "load_checkpoint", lambda _: {"config": {"data": {"dataset": "libero"}}}
+    )
+    captured = []
+
+    def evaluate(checkpoint, suite, *args, **kwargs):
+        captured.append((checkpoint, suite))
+
+    monkeypatch.setattr(libero_evaluation, "evaluate", evaluate)
+    args = ["--checkpoint", "best.pt", "--output-dir", "eval", "--suite", "libero_all"]
+    script.main((["eval"] if entrypoint == "cli" else []) + args)
+    assert captured == [("best.pt", "libero_all")]
+
+
+@pytest.mark.parametrize("entrypoint", ["evaluate", "cli"])
+def test_evaluation_entrypoints_reject_libero_90(entrypoint):
+    script = load_script(entrypoint)
+    args = ["--checkpoint", "missing.pt", "--output-dir", "eval", "--suite", "libero_90"]
+    with pytest.raises(SystemExit) as exc:
+        script.main((["eval"] if entrypoint == "cli" else []) + args)
     assert exc.value.code == 2

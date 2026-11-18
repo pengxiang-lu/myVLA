@@ -126,8 +126,8 @@ def evaluate_metaworld(
     device = resolve_device(device_name)
     seed_everything(seed)
     policy, config, stats, payload = policy_from_checkpoint(checkpoint, device, weights=weights)
-    if config.data.dataset != "metaworld" or config.model.backend != "clip":
-        raise ValueError("MetaWorld benchmark requires a real CLIP MT50 checkpoint")
+    if config.data.dataset != "metaworld" or config.model.backend not in {"clip", "siglip"}:
+        raise ValueError("MetaWorld benchmark requires a real CLIP/SigLIP MT50 checkpoint")
     out = prepare_eval_output(output, payload["step"], seed)
     controller = MetaWorldController(policy, config, stats, device, execute_steps)
     trained_languages = {ep["language"] for ep in payload["manifest"] if ep["split"] == "train"}

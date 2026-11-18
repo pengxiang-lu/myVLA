@@ -23,8 +23,8 @@ HORIZONS = {
     "libero_object": 280,
     "libero_goal": 300,
     "libero_10": 520,
-    "libero_90": 400,
 }
+SUITE_CHOICES = (*HORIZONS, "libero_all")
 
 
 class Controller:
@@ -94,6 +94,50 @@ def evaluate(
     libero_root=None,
     weights="auto",
 ):
+    if suite not in SUITE_CHOICES:
+        raise ValueError(f"Unsupported LIBERO suite: {suite}")
+    common = dict(
+        checkpoint=checkpoint, tasks=tasks, episodes=episodes, device_name=device_name,
+        execute_steps=execute_steps, output=output, seed=seed, horizon=horizon,
+        videos=videos, libero_root=libero_root, weights=weights,
+    )
+    if suite != "libero_all":
+        return _evaluate_suite(suite=suite, **common)
+    summaries = {}
+    for name in HORIZONS:
+        print(f"Evaluating LIBERO suite: {name}", flush=True)
+        summaries[name] = _evaluate_suite(suite=name, separate_suite=True, **common)
+    rates = {
+        f"{name}/{task}": rate
+        for name, summary in summaries.items()
+        for task, rate in summary["success_rate"].items()
+    }
+    result = {
+        "success_rate": rates,
+        "suite_success_rate": {
+            name: summary["total_success_rate"] for name, summary in summaries.items()
+        },
+        "total_success_rate": round(sum(rates.values()) / len(rates), 4),
+    }
+    print(json.dumps(result, indent=2), flush=True)
+    return result
+
+
+def _evaluate_suite(
+    checkpoint,
+    suite,
+    tasks,
+    episodes,
+    device_name,
+    execute_steps,
+    output,
+    seed=42,
+    horizon=None,
+    videos=False,
+    libero_root=None,
+    weights="auto",
+    separate_suite=False,
+):
     if episodes < 1 or (horizon is not None and horizon < 1):
         raise ValueError("episodes and horizon must be positive")
     os.environ.setdefault("MUJOCO_GL", "egl")
@@ -109,7 +153,7 @@ def evaluate(
     policy, config, stats, payload = policy_from_checkpoint(checkpoint, device, weights=weights)
     if config.data.dataset != "libero":
         raise ValueError("Use eval-metaworld for a MetaWorld checkpoint")
-    if config.model.backend != "clip":
+    if config.model.backend not in {"clip", "siglip"}:
         raise ValueError("Tiny random smoke model cannot be used for benchmark reporting")
     controller = Controller(policy, config, stats, device, execute_steps)
     benchmark_suite = benchmark.get_benchmark_dict()[suite](task_order_index=0)
@@ -129,7 +173,9 @@ def evaluate(
         rng = np.random.default_rng(np.random.SeedSequence([seed, task_id]))
         indices = rng.permutation(len(states))[:episodes].tolist()
         plan.append((task_id, task, states, states_sha256, indices))
-    out = prepare_eval_output(output, payload["step"], seed)
+    out = prepare_eval_output(
+        output, payload["step"], seed, suite=suite if separate_suite else None,
+    )
     result = {
         "checkpoint": str(Path(checkpoint).resolve()),
         "checkpoint_step": payload["step"],
@@ -217,7 +263,7 @@ def evaluate(
         finally:
             env.close()
     summary = progress.finish()
-    print(f"Mean success rate: {summary['total_success_rate']:.3f}")
+    print(f"Mean success rate: {summary['total_success_rate']:.4f}")
     return summary
 
 
@@ -233,7 +279,7 @@ def main(argv=None):
     parser.add_argument("--weights", choices=["auto", "raw", "ema"], default="auto")
     parser.add_argument(
         "--output-dir", required=True,
-        help="Experiment directory; reports are saved under ckpt<step>/seed<seed>",
+        help="Experiment directory; ckpt<step>/seed<seed> (suite subdirectories for libero_all)",
     )
     parser.add_argument(
         "--dataset",
@@ -242,8 +288,8 @@ def main(argv=None):
     )
     parser.add_argument(
         "--suite",
-        choices=["libero_spatial", "libero_object", "libero_goal", "libero_10", "libero_90"],
-        help="LIBERO suite (default: libero_spatial)",
+        choices=SUITE_CHOICES,
+        help="LIBERO suite (default: libero_spatial); libero_all evaluates all four suites",
     )
     parser.add_argument("--tasks", type=int, nargs="+")
     parser.add_argument(

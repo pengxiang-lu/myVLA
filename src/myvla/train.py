@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader, Sampler
 from .config import TrainConfig, from_dict, load_config
 from .data import RobotDataset, compute_stats, manifest, scan_episodes
 from .ema import HeadEMA
-from .model import Policy, action_loss
+from .model import Policy
 from .preprocess import augment_images
 
 
@@ -394,8 +394,10 @@ def train(config, resume=None, init_checkpoint=None):
                 batch = move_batch(next(batches), device)
                 batch["images"] = augment_images(batch["images"], t.image_shift, t.color_jitter)
                 with amp_context(device, t.precision):
-                    predictions = policy(batch["images"], batch["state"], batch["language"])
-                    loss, _ = action_loss(predictions, batch["actions"], batch["mask"])
+                    loss, _ = policy.compute_loss(
+                        batch["images"], batch["state"], batch["language"],
+                        batch["actions"], batch["mask"],
+                    )
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"Non-finite loss at step {step}")
                 scaler.scale(loss / t.grad_accumulation).backward()

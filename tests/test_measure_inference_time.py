@@ -19,13 +19,15 @@ spec.loader.exec_module(benchmark)
 
 
 @pytest.mark.parametrize("fusion_layers", [0, 2])
+@pytest.mark.parametrize("action_head", ["regression", "flow_matching"])
 def test_uncached_inference_matches_policy_and_reports_checkpoint_horizon(
-    tmp_path, fusion_layers, monkeypatch
+    tmp_path, fusion_layers, action_head, monkeypatch
 ):
     torch.set_num_threads(1)
     config = Config(model=ModelConfig(
         backend="tiny", image_size=16, hidden_dim=32, layers=1, heads=4,
         fusion_layers=fusion_layers, chunk_size=12,
+        action_head=action_head, flow_steps=2,
     ))
     policy = Policy(config.model).eval()
     language = "pick up the bowl"
@@ -33,7 +35,9 @@ def test_uncached_inference_matches_policy_and_reports_checkpoint_horizon(
     state = torch.zeros(1, 8)
     text = benchmark.prepare_text(policy.backbone, language, torch.device("cpu"))
     with torch.inference_mode():
+        torch.manual_seed(7)
         expected = policy(images, state, [language])
+        torch.manual_seed(7)
         actual = benchmark.predict_chunk(policy, images, state, text)
     torch.testing.assert_close(actual, expected)
     stats = {
@@ -54,6 +58,8 @@ def test_uncached_inference_matches_policy_and_reports_checkpoint_horizon(
     ])
     assert result["output_shape"] == [1, 12, 7]
     assert result["checkpoint_step"] == 123
+    assert result["action_head"] == action_head
+    assert result["flow_steps"] == (2 if action_head == "flow_matching" else None)
     assert len(result["samples_ms"]) == 2
     assert result["latency_ms"]["median"] > 0
     assert json.loads(report.read_text()) == result

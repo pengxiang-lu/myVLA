@@ -1,16 +1,21 @@
 import hashlib
+import math
 from contextlib import nullcontext
 
 import torch
 import torch.nn.functional as F
 from torch import nn
-from transformers import CLIPConfig, CLIPModel, CLIPTokenizerFast
+from transformers import AutoTokenizer, CLIPConfig, CLIPModel, CLIPTokenizerFast, SiglipModel
+
+from .preprocess import CLIP_MEAN, CLIP_STD
 
 
 class FrozenCLIP(nn.Module):
+    """CLIP/SigLIP adapter; keep the legacy name and `clip` checkpoint namespace."""
     def __init__(self, config):
         super().__init__()
         self.backend = config.backend
+        self.is_siglip = self.backend == "siglip"
         self.use_tokens = config.fusion_layers > 0
         self.train_vision_encoder = config.train_vision_encoder
         if self.backend == "tiny":
@@ -40,12 +45,14 @@ class FrozenCLIP(nn.Module):
             self.clip = CLIPModel(clip_config)
             self.tokenizer = None
         else:
-            self.clip = CLIPModel.from_pretrained(
+            model_class = SiglipModel if self.is_siglip else CLIPModel
+            self.clip = model_class.from_pretrained(
                 config.backbone, revision=config.revision, attn_implementation="sdpa"
             )
             # Store the resolved commit rather than a moving branch in checkpoints.
             config.revision = self.clip.config._commit_hash or config.revision
-            self.tokenizer = CLIPTokenizerFast.from_pretrained(
+            tokenizer_class = AutoTokenizer if self.is_siglip else CLIPTokenizerFast
+            self.tokenizer = tokenizer_class.from_pretrained(
                 config.backbone, revision=config.revision
             )
         self.clip.requires_grad_(False)
@@ -60,13 +67,37 @@ class FrozenCLIP(nn.Module):
         self.clip.vision_model.train(mode and self.train_vision_encoder)
         return self
 
-    def forward(self, images, languages):
+    def tokenize(self, language, device):
+        if self.tokenizer is None:
+            digest = hashlib.sha256(language.encode()).digest()[:16]
+            ids = [1] + [3 + b % 125 for b in digest] + [2]
+            return {"input_ids": torch.tensor([ids], device=device)}
+        if self.is_siglip:
+            inputs = self.tokenizer(
+                language, return_tensors="pt", truncation=True, padding="max_length",
+                max_length=self.clip.config.text_config.max_position_embeddings,
+            )
+            # SigLIP was pretrained without masking its fixed-length EOS padding.
+            return {"input_ids": inputs["input_ids"].to(device)}
+        return self.tokenizer(
+            language, return_tensors="pt", truncation=True, max_length=77
+        ).to(device)
+
+    def encode_vision(self, images):
         batch, cameras = images.shape[:2]
+        if self.is_siglip:
+            # All data/rollout/augmentation APIs use CLIP-normalized images.
+            # Convert once here to SigLIP's RGB mean=std=0.5 convention.
+            images = ((images * CLIP_STD.to(images) + CLIP_MEAN.to(images)) - 0.5) / 0.5
         context = nullcontext() if self.train_vision_encoder else torch.no_grad()
         with context:
             vision = self.clip.vision_model(pixel_values=images.flatten(0, 1)).last_hidden_state
-        # Drop CLS; each patch already carries CLIP spatial position information.
-        vision = vision[:, 1:].reshape(batch, cameras, -1, self.vision_dim)
+        if not self.is_siglip:
+            vision = vision[:, 1:]  # CLIP has CLS; SigLIP contains only patch tokens.
+        return vision.reshape(batch, cameras, -1, self.vision_dim).float()
+
+    def forward(self, images, languages):
+        vision = self.encode_vision(images)
         return (vision.float(), *self.encode_text(languages, images.device))
 
     @torch.no_grad()
@@ -74,14 +105,7 @@ class FrozenCLIP(nn.Module):
         texts, tokens = [], []
         for language in languages:
             if language not in self.text_cache:
-                if self.tokenizer is None:
-                    digest = hashlib.sha256(language.encode()).digest()[:16]
-                    ids = [1] + [3 + b % 125 for b in digest] + [2]
-                    inputs = {"input_ids": torch.tensor([ids], device=device)}
-                else:
-                    inputs = self.tokenizer(
-                        language, return_tensors="pt", truncation=True, max_length=77
-                    ).to(device)
+                inputs = self.tokenize(language, device)
                 encoded = self.clip.text_model(**inputs)
                 self.text_cache[language] = (
                     encoded.pooler_output[0].float().cpu(),
@@ -165,34 +189,98 @@ class ActionHead(nn.Module):
             ]
         )
 
-    def forward(self, vision, text, state, tokens=None, padding=None):
+    def encode_context(self, vision, text, state, tokens=None, padding=None):
         visual = (self.vision_proj(vision) + self.camera_embedding).flatten(1, 2)
         if self.fusion:
             token_features = self.text_proj(tokens)
             original_tokens = token_features
             for layer in self.fusion:
                 visual, token_features = layer(visual, token_features, padding)
-            # Add the EOS interaction residual to the original pooled instruction.
+            # Last valid token: CLIP EOS or SigLIP's final fixed-length padding token.
             eos = (~padding).sum(1) - 1
             indices = torch.arange(len(eos), device=eos.device)
             text_summary = self.text_proj(text) + (token_features - original_tokens)[indices, eos]
         else:
             text_summary = self.text_proj(text)
         context = torch.stack([text_summary, self.state_proj(state)], dim=1)
-        memory = torch.cat([visual, context + self.modality_embedding], dim=1)
+        return torch.cat([visual, context + self.modality_embedding], dim=1)
+
+    def forward(self, vision, text, state, tokens=None, padding=None):
+        memory = self.encode_context(vision, text, state, tokens, padding)
         queries = self.action_queries.expand(state.shape[0], -1, -1)
         return self.output(self.decoder(queries, memory))
+
+
+class FlowMatchingActionHead(ActionHead):
+    """Conditional linear noise-to-action flow with a Transformer velocity field."""
+
+    def __init__(self, config, vision_dim, text_dim):
+        super().__init__(config, vision_dim, text_dim)
+        d = config.hidden_dim
+        self.action_dim = config.action_dim
+        self.flow_steps = config.flow_steps
+        self.action_proj = nn.Linear(config.action_dim, d)
+        self.time_proj = nn.Sequential(nn.Linear(d, d), nn.SiLU(), nn.Linear(d, d))
+        self.register_buffer(
+            "time_frequencies",
+            torch.exp(torch.linspace(0, -math.log(10000), (d + 1) // 2)),
+        )
+
+    def velocity(self, actions, time, memory):
+        phase = time.float()[:, None] * self.time_frequencies[None] * (2 * math.pi)
+        embedding = torch.cat([phase.sin(), phase.cos()], dim=-1)
+        embedding = self.time_proj(embedding[:, :self.action_queries.shape[-1]])
+        queries = self.action_proj(actions) + self.action_queries + embedding[:, None]
+        return self.output(self.decoder(queries, memory))
+
+    def loss(self, vision, text, state, targets, mask, tokens=None, padding=None):
+        memory = self.encode_context(vision, text, state, tokens, padding)
+        targets = targets.float().clone()
+        if self.action_dim == 7:
+            # Dataset stores LIBERO gripper in {0,1}; flow models signed {-1,+1}.
+            targets[..., 6] = targets[..., 6] * 2 - 1
+        valid = mask.bool().unsqueeze(-1)
+        targets = targets.masked_fill(~valid, 0)
+        noise = torch.randn_like(targets).masked_fill(~valid, 0)
+        time = torch.rand(len(targets), device=targets.device)
+        noisy = torch.lerp(noise, targets, time[:, None, None])
+        prediction = self.velocity(noisy, time, memory)
+        error = (prediction.float() - (targets - noise)).square().mean(-1)
+        loss = error.masked_fill(~mask.bool(), 0).sum() / mask.sum().clamp_min(1)
+        return loss, {"flow": loss.detach()}
+
+    def sample(self, memory, noise=None):
+        shape = (memory.shape[0], self.action_queries.shape[1], self.action_dim)
+        actions = (
+            torch.randn(shape, device=memory.device, dtype=torch.float32)
+            if noise is None else noise.float().clone()
+        )
+        for step in range(self.flow_steps):
+            time = actions.new_full((len(actions),), step / self.flow_steps)
+            actions = actions + self.velocity(actions, time, memory).float() / self.flow_steps
+        return actions
+
+    def forward(self, vision, text, state, tokens=None, padding=None):
+        memory = self.encode_context(vision, text, state, tokens, padding)
+        return self.sample(memory)
 
 
 class Policy(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.backbone = FrozenCLIP(config)
-        self.head = ActionHead(config, self.backbone.vision_dim, self.backbone.text_dim)
+        head = FlowMatchingActionHead if config.action_head == "flow_matching" else ActionHead
+        self.head = head(config, self.backbone.vision_dim, self.backbone.text_dim)
 
     def forward(self, images, state, language):
         features = self.backbone(images, language)
         return self.head(features[0], features[1], state, *features[2:])
+
+    def compute_loss(self, images, state, language, targets, mask):
+        if isinstance(self.head, FlowMatchingActionHead):
+            features = self.backbone(images, language)
+            return self.head.loss(features[0], features[1], state, targets, mask, *features[2:])
+        return action_loss(self(images, state, language), targets, mask)
 
 
 def action_loss(predictions, targets, mask):

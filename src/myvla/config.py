@@ -20,6 +20,8 @@ class ModelConfig:
     action_dim: int = 7
     cameras: int = 2
     train_vision_encoder: bool = False
+    action_head: str = "regression"
+    flow_steps: int = 10
 
 
 @dataclass
@@ -67,8 +69,12 @@ class Config:
             return self
         meta = dataset == "metaworld"
         suite = "metaworld_mt50" if meta else "libero_spatial"
-        if self.model.train_vision_encoder:
-            model_version = {0: "v2", 2: "v2_1", 6: "v2_2", 8: "v4"}.get(
+        if self.model.backend == "siglip":
+            model_version = "v4"
+        elif self.model.action_head == "flow_matching":
+            model_version = "v3"
+        elif self.model.train_vision_encoder:
+            model_version = {0: "v2", 2: "v2_1", 6: "v2_2", 8: "v2_3"}.get(
                 self.model.fusion_layers, "v2"
             )
         elif self.model.fusion_layers == 2:
@@ -104,18 +110,22 @@ class Config:
             raise ValueError(
                 "Converted MetaWorld RGB is already oriented; flip_vertical must be false"
             )
-        if m.backend not in {"clip", "tiny"}:
-            raise ValueError("model.backend must be clip or tiny (offline smoke test only)")
+        if m.backend not in {"clip", "siglip", "tiny"}:
+            raise ValueError("model.backend must be clip, siglip or tiny (offline smoke test)")
         if not isinstance(m.train_vision_encoder, bool):
             raise ValueError("train_vision_encoder must be a boolean")
+        if m.action_head not in {"regression", "flow_matching"}:
+            raise ValueError("action_head must be regression or flow_matching")
+        if type(m.flow_steps) is not int or m.flow_steps < 1:
+            raise ValueError("flow_steps must be a positive integer")
         if min(m.hidden_dim, m.layers, m.heads, m.chunk_size, m.image_size) < 1:
             raise ValueError("Model dimensions must be positive")
         if not isinstance(m.fusion_layers, int) or m.fusion_layers < 0:
             raise ValueError("fusion_layers must be a nonnegative integer")
         if m.hidden_dim % m.heads or not 0 <= m.dropout < 1:
             raise ValueError("Invalid attention dimensions or dropout")
-        if m.backend == "clip" and m.image_size != 224:
-            raise ValueError("This CLIP baseline requires image_size=224")
+        if m.backend in {"clip", "siglip"} and m.image_size != 224:
+            raise ValueError("These CLIP/SigLIP baselines require image_size=224")
         if m.backend == "tiny" and m.image_size % 4:
             raise ValueError("Tiny CLIP image_size must be divisible by 4")
         if (

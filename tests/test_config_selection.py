@@ -6,10 +6,12 @@ from myvla import cli
 from myvla import train as training
 from myvla.config import load_config
 
-CONFIGS = Path(__file__).resolve().parents[1] / "configs"
+CONFIGS = Path(__file__).resolve().parents[1] / "configs" / "libero_spatial"
 
 
-@pytest.mark.parametrize("version", ["v1", "v1_1", "v1_2", "v2", "v2_1", "v2_2", "v4"])
+@pytest.mark.parametrize(
+    "version", ["v1", "v1_1", "v1_2", "v2", "v2_1", "v2_2", "v3", "v4"]
+)
 def test_dataset_selection_preserves_architecture_and_training(version):
     original = load_config(CONFIGS / f"train_cfg_{version}.yaml")
     meta = original.for_dataset("metaworld")

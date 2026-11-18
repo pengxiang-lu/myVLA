@@ -251,12 +251,12 @@ def test_frozen_backbone_and_output(config):
 
 @pytest.mark.parametrize(
     "version,base,fusion_layers",
-    [("v2", "v1", 0), ("v2_1", "v1_1", 2), ("v2_2", "v1_2", 6), ("v4", "v2_2", 8)],
+    [("v2", "v1", 0), ("v2_1", "v1_1", 2), ("v2_2", "v1_2", 6)],
 )
 def test_joint_training_updates_vision_while_text_and_clip_projections_stay_frozen(
     config, version, base, fusion_layers,
 ):
-    configs = Path(__file__).resolve().parents[1] / "configs"
+    configs = Path(__file__).resolve().parents[1] / "configs" / "libero_spatial"
     joint = load_config(configs / f"train_cfg_{version}.yaml")
     baseline = load_config(configs / f"train_cfg_{base}.yaml")
     baseline.model.train_vision_encoder = True

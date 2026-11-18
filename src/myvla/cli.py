@@ -10,6 +10,7 @@ import torch
 
 from .config import Config, DataConfig, ModelConfig, TrainConfig
 from .data import compute_stats, manifest, scan_episodes
+from .evaluate import SUITE_CHOICES
 from .train import add_train_arguments, policy_from_checkpoint, run_training, train
 
 
@@ -200,7 +201,8 @@ def main(argv=None):
     p.add_argument(
         "--suite",
         default="libero_spatial",
-        choices=["libero_spatial", "libero_object", "libero_goal", "libero_10", "libero_90"],
+        choices=SUITE_CHOICES,
+        help="LIBERO suite (default: libero_spatial); libero_all evaluates all four suites",
     )
     p.add_argument("--tasks", type=int, nargs="+")
     p.add_argument("--episodes", type=int, default=10)
@@ -208,7 +210,7 @@ def main(argv=None):
     p.add_argument("--execute-steps", type=int, default=12)
     p.add_argument(
         "--output-dir", required=True,
-        help="Experiment directory; reports are saved under ckpt<step>/seed<seed>",
+        help="Experiment directory; ckpt<step>/seed<seed> (suite subdirectories for libero_all)",
     )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--horizon", type=int)

@@ -15,7 +15,7 @@ def atomic_write(path, text):
     temp.replace(path)
 
 
-def prepare_eval_output(output, checkpoint_step, seed=42):
+def prepare_eval_output(output, checkpoint_step, seed=42, suite=None):
     """Group evaluations by experiment, checkpoint step and evaluation seed."""
     out = Path(output)
     seed_name = f"seed{seed}"
@@ -32,6 +32,8 @@ def prepare_eval_output(output, checkpoint_step, seed=42):
     else:
         out = out / name
     out = out / seed_name
+    if suite is not None:
+        out = out / suite
     if any((out / name).exists() for name in ("episodes.jsonl", "log.json", "results.json")):
         if not (out / "progress.json").exists():
             raise FileExistsError(f"Evaluation output exists: {out}; choose a new directory")
@@ -168,8 +170,13 @@ class EvaluationProgress:
         if not all(self.task_done(task) for task in self.task_names):
             raise ValueError("Cannot summarize an incomplete evaluation")
         rates = {
-            task: sum(self.progress[task].values()) / self.episodes for task in self.task_names
+            task: round(sum(self.progress[task].values()) / self.episodes, 4)
+            for task in self.task_names
         }
-        result = {"success_rate": rates, "total_success_rate": sum(rates.values()) / len(rates)}
+        total_successes = sum(sum(self.progress[task].values()) for task in self.task_names)
+        result = {
+            "success_rate": rates,
+            "total_success_rate": round(total_successes / (len(rates) * self.episodes), 4),
+        }
         atomic_write(self.out / "log.json", json.dumps(result, indent=2))
         return result

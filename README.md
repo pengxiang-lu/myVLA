@@ -49,7 +49,7 @@ UV_PROJECT_ENVIRONMENT=.venv-mt50 uv sync --locked --extra mt50
 
 ### 2.3 准备 CLIP 权重
 
-　　两套环境共用同一份 CLIP 权重。下载脚本支持分段续传及校验，默认保存到 `models/clip-vit-base-patch16/`。
+　　下载脚本支持分段续传及校验，默认保存到 `models/clip-vit-base-patch16/`。
 
 ```bash
 unset UV_PROJECT_ENVIRONMENT
@@ -69,9 +69,16 @@ uv run scripts/download_clip_mirror.py --workers 2
 
 ​	两份配置均通过相对路径 `models/clip-vit-base-patch16` 加载本地权重，因此命令应在项目根目录运行；权重放在其他位置时修改 `model.backbone`。`HF_HUB_OFFLINE=1` 可选，用于禁止联网检查。
 
-​	正式训练需要可用的 CUDA；CPU 调试需同时设置 `train.device: cpu` 和 `train.precision: fp32`。
+### 2.4 下载 SigLIP 权重
 
-### 2.4 准备 LIBERO 源码
+​	下载脚本支持分段续传及校验，默认保存到`models/siglip-base-patch16-224/`。
+
+```bash
+unset UV_PROJECT_ENVIRONMENT
+uv run scripts/download_siglip.py --workers 4
+```
+
+### 2.5 准备 LIBERO 源码
 
 　　LIBERO 闭环评估需要源码和仿真资源。没有源码时，将官方仓库克隆到默认查找位置；已有源码可跳过克隆，通过 `LIBERO_ROOT` 指定目录。
 
@@ -96,6 +103,14 @@ uv run scripts/download_data.py \
   --directory data \
   --endpoint https://hf-mirror.com \
   --max-workers 2 
+
+# 如果要加速下载
+HF_HUB_DISABLE_XET=1 HF_HUB_DOWNLOAD_TIMEOUT=120 \
+uv run scripts/download_data.py \
+  --suite libero_10 \
+  --directory data \
+  --endpoint https://hf-mirror.com \
+  --max-workers 4
 ```
 
 ​	下载命令的 `--suite` 支持 `libero_spatial`、`libero_object`、`libero_goal`、`libero_10`、`libero_90` 和 `libero_100`。其中 `libero_10` 单独下载 LIBERO-10（Long）；`libero_100` 会同时下载 `libero_90` 和 `libero_10`，并分别保存到对应子目录。
@@ -106,16 +121,8 @@ uv run scripts/download_data.py \
 
 ```bash
 uv run src/myvla/train.py \
-  --config configs/train_cfg_v4.yaml \
-  --output-dir outputs/train/libero_spatial_v4
-```
-
-V4 在 V2.2 基础上使用 8 层双向交叉注意力融合块，继续训练 CLIP 视觉编码器，文本编码器保持冻结，其余训练设置一致。使用独立配置和输出目录从头训练：
-
-```bash
-HF_HUB_OFFLINE=1 .venv/bin/python src/myvla/train.py \
-  --config configs/train_cfg_v4.yaml \
-  --output-dir outputs/train/libero_spatial_v4
+  --config configs/libero_all/train_cfg_v2_2.yaml \
+  --output-dir outputs/train/libero_all_v2_2
 ```
 
 ### 3.3 MetaWorld MT50 数据准备与训练
@@ -149,7 +156,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 # 恢复 LIBERO 训练
 unset UV_PROJECT_ENVIRONMENT
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --resume outputs/train/libero_spatial_v2_2/checkpoint_20000.pt
+  --resume outputs/train/libero_all_v2_2/checkpoint_24000.pt
 
 # 恢复 MT50 训练
 export UV_PROJECT_ENVIRONMENT=.venv-mt50
@@ -168,6 +175,26 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
 
 　　`--init-checkpoint` 用于加载权重开始新的微调，并重置优化器，两者不能同时使用。已有输出目录会被保护，重新训练请设置新的 `--output-dir`。旧 checkpoint 仍可用于推理、初始化或续训；旧配置中的验证字段会被忽略。续训会将原验证轨迹纳入训练，并保留 checkpoint 的归一化统计量、优化器、EMA 和原学习率计划。仅使用 `--resume` 时，保存间隔默认改为 2,000 步；提供 `--config` 时使用配置中的 `save_every`，也可用 `--save-every` 显式指定。旧的 `latest.pt` 仍可作为续训起点，后续按新规则命名。新训练的归一化统计量从全部演示计算。
 
+### 3.5 V3 与 V4 配置
+
+V3 在 V2.2 基础上使用 Flow Matching 动作头；V4 在 V2.2 基础上将视觉和文本编码器换成 SigLIP，保留原回归动作头。两者均训练视觉编码器、冻结文本编码器。
+
+| 版本 | Spatial 配置 | 四套件联合训练配置 |
+|---|---|---|
+| V3 | `configs/libero_spatial/train_cfg_v3.yaml` | `configs/libero_all/train_cfg_v3.yaml` |
+| V4 | `configs/libero_spatial/train_cfg_v4.yaml` | `configs/libero_all/train_cfg_v4.yaml` |
+
+V4 需要单独准备 SigLIP 权重：
+
+```bash
+uv sync --locked --extra sim
+uv run scripts/download_siglip.py --workers 2
+# 网络访问 Hugging Face 困难时追加：--endpoint https://hf-mirror.com
+HF_HUB_OFFLINE=1 uv run src/myvla/train.py --config configs/libero_all/train_cfg_v4.yaml
+```
+
+下载内容保存到 `models/siglip-base-patch16-224/`，训练输出到 `outputs/train/libero_all_v4/`。V3/V4 均需要独立训练，不能直接用 V2.2 的 checkpoint 续训。模型细节见 [模型版本说明](docs/VLA版本.md)。
+
 ## 四、评估
 
 　　`evaluate.py` 会根据 checkpoint 自动选择 LIBERO 或 MT50；也可用 `--dataset libero` 或 `--dataset metaworld` 显式核对。查看完整参数使用 `uv run src/myvla/evaluate.py --help`。
@@ -179,9 +206,9 @@ unset UV_PROJECT_ENVIRONMENT
 export LIBERO_ROOT=/home/lpx/python-project/LIBERO	# 如果LIBERO放在其他位置
 
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_spatial_v2_2/checkpoint_6000.pt \
-  --suite libero_object --episodes 10 --execute-steps 12 \
-  --output-dir outputs/eval/libero_object_v2_2
+  --checkpoint outputs/train/libero_all_v2_2/checkpoint_40000.pt \
+  --suite libero_all --episodes 10 --execute-steps 12 \
+  --output-dir outputs/eval/libero_all_v2_2
 ```
 
 　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--video`（或 `--videos`）保存视频到 `ckpt<步数>/seed<seed>/videos/`。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，默认每次执行完整 12 步预测动作后重新观察；使用旧的 8 步 checkpoint 时，需显式设置 `--execute-steps 8` 或更小的值。
@@ -192,6 +219,17 @@ HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
 --weights ema   # 使用 EMA 权重
 --weights raw   # 使用原始权重
 ```
+
+评估的 `--suite` 支持 `libero_spatial`、`libero_object`、`libero_goal`、`libero_10` 和 `libero_all`，不再支持 `libero_90`。使用 `libero_all` 会按上述前四个套件的顺序依次评估同一个 checkpoint：
+
+```bash
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+  --checkpoint outputs/train/libero_all_v2_2/checkpoint_10000.pt \
+  --suite libero_all --episodes 10 --execute-steps 12 \
+  --output-dir outputs/eval/libero_all_v2_2
+```
+
+每个套件的 `log.json`、`progress.json`、`episodes.jsonl` 和可选视频分别保存在 `ckpt10000/seed42/<套件名>/` 下，支持各自断点恢复，终端会输出各套件和全部任务的平均成功率。默认每个套件评估全部 10 个任务，共 400 回合；默认控制步上限依次为 220、280、300、520。显式传入的 `--tasks`、`--episodes`、`--execute-steps`、`--horizon`、`--seed` 和 `--weights` 会应用于全部四个套件。单套件评估的输出目录仍为 `ckpt<步数>/seed<seed>/`。
 
 ### 4.2 MetaWorld MT50 闭环评估
 
