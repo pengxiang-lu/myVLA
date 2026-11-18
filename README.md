@@ -35,17 +35,30 @@ uv --version
 uv python install 3.10
 ```
 
-​	LIBERO 和 MetaWorld 的 MuJoCo 版本不同，分别使用独立虚拟环境，不能同时启用 `sim` 和 `mt50`。先用下面的 `uv sync` 安装对应依赖，后续统一使用 `uv run 脚本路径`；`UV_PROJECT_ENVIRONMENT` 决定使用哪个虚拟环境。
+训练统一使用 `.venv`，两个仿真评估环境分别安装各自依赖：
+
+| 用途 | 虚拟环境 | 可选依赖组 |
+|---|---|---|
+| LIBERO / MT50 数据准备、训练和推理耗时测试 | `.venv` | 无 |
+| LIBERO 仿真评估 | `.venv-libero` | `libero` |
+| MetaWorld MT50 仿真评估 | `.venv-mt50` | `mt50` |
+
+LIBERO 和 MT50 使用的 MuJoCo 版本不同，`libero` 和 `mt50` 不能同时启用。`UV_PROJECT_ENVIRONMENT` 选择环境目录，`--extra` 选择该环境所需的可选依赖，两者需配合使用。
 
 ```bash
-# LIBERO 环境：.venv
+# 通用训练环境：.venv
 unset UV_PROJECT_ENVIRONMENT
-uv sync --locked --extra sim
+uv sync --locked
 uv run scripts/doctor.py
 
-# MetaWorld 环境：.venv-mt50
+# LIBERO 评估环境：.venv-libero
+UV_PROJECT_ENVIRONMENT=.venv-libero uv sync --locked --extra libero
+
+# MT50 评估环境：.venv-mt50
 UV_PROJECT_ENVIRONMENT=.venv-mt50 uv sync --locked --extra mt50
 ```
+
+旧的 `sim` 依赖组已改名为 `libero`。已有 `.venv` 可以直接运行 `uv sync --locked`，同步为通用训练环境；`.venv-libero` 应用上述命令新建，不要直接重命名旧虚拟环境。
 
 ### 2.3 准备 CLIP 权重
 
@@ -86,7 +99,7 @@ uv run scripts/download_siglip.py --workers 4
 git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git third_party/LIBERO
 export LIBERO_ROOT="$PWD/third_party/LIBERO"
 export MUJOCO_GL=egl
-uv run scripts/sim_smoke.py
+UV_PROJECT_ENVIRONMENT=.venv-libero uv run --extra libero scripts/sim_smoke.py
 ```
 
 　　本机已有源码可使用 `export LIBERO_ROOT=/home/lpx/python-project/LIBERO`。仿真依赖由本项目管理，无需额外安装上游整份 requirements；仅训练 HDF5 数据时不需要启动模拟器。
@@ -120,6 +133,7 @@ uv run scripts/download_data.py \
 　　例如对于v1模型进行训练，可以指定训练步数和输出目录，也可以不指定使用默认参数：
 
 ```bash
+unset UV_PROJECT_ENVIRONMENT
 uv run src/myvla/train.py \
   --config configs/libero_all/train_cfg_v2_2.yaml \
   --output-dir outputs/train/libero_all_v2_2
@@ -127,10 +141,10 @@ uv run src/myvla/train.py \
 
 ### 3.3 MetaWorld MT50 数据准备与训练
 
-　　切换到 MT50 环境，下载官方 LeRobot v3 图像/parquet 数据，并导入为训练使用的 HDF5。完整原始数据约 45.9GB，还需预留转换后的空间；将 `/path/to/datasets` 改为实际下载位置。
+　　使用通用训练环境 `.venv`，下载官方 LeRobot v3 图像/parquet 数据，并导入为训练使用的 HDF5。完整原始数据约 45.9GB，还需预留转换后的空间；将 `/path/to/datasets` 改为实际下载位置。
 
 ```bash
-export UV_PROJECT_ENVIRONMENT=.venv-mt50
+unset UV_PROJECT_ENVIRONMENT
 
 uv run scripts/download_data.py \
   --suite metaworld_mt50 --directory /path/to/datasets --max-workers 2
@@ -143,10 +157,10 @@ uv run scripts/inspect_data.py \
   --dataset metaworld --data-dir data/metaworld_mt50
 
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
-  --config configs/train_cfg_v1_2.yaml --dataset metaworld
+  --config configs/libero_spatial/train_cfg_v1_2.yaml --dataset metaworld
 ```
 
-　　导入目标目录必须不存在。当前导入器支持 LeRobot v3 内嵌 RGB，不支持旧版 v2 或视频存储。`--dataset metaworld` 自动切换相机数量、状态/动作维度和默认数据目录，各版本均可使用；数据在其他位置时追加 `--data-dir`。上述 V1.2 命令默认训练 30,000 步，输出为 `outputs/train/metaworld_mt50_v1_2`；其输入输出维度与 LIBERO 不同，需要独立训练。
+　　导入目标目录必须不存在。当前导入器支持 LeRobot v3 内嵌 RGB，不支持旧版 v2 或视频存储。`--dataset metaworld` 自动切换相机数量、状态/动作维度和默认数据目录，各版本均可使用；数据在其他位置时追加 `--data-dir`。上述 V1.2 命令的训练步数由配置决定，输出为 `outputs/train/metaworld_mt50_v1_2`；其输入输出维度与 LIBERO 不同，需要独立训练。
 
 ### 3.4 参数设置与断点恢复
 
@@ -159,7 +173,7 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
   --resume outputs/train/libero_all_v2_2/checkpoint_24000.pt
 
 # 恢复 MT50 训练
-export UV_PROJECT_ENVIRONMENT=.venv-mt50
+unset UV_PROJECT_ENVIRONMENT
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
   --resume outputs/train/metaworld_mt50_v1_2/checkpoint_30000.pt
 ```
@@ -187,7 +201,8 @@ V3 在 V2.2 基础上使用 Flow Matching 动作头；V4 在 V2.2 基础上将�
 V4 需要单独准备 SigLIP 权重：
 
 ```bash
-uv sync --locked --extra sim
+unset UV_PROJECT_ENVIRONMENT
+uv sync --locked
 uv run scripts/download_siglip.py --workers 2
 # 网络访问 Hugging Face 困难时追加：--endpoint https://hf-mirror.com
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py --config configs/libero_all/train_cfg_v4.yaml
@@ -202,10 +217,10 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py --config configs/libero_all/train_cfg
 ### 4.1 LIBERO 闭环评估
 
 ```bash
-unset UV_PROJECT_ENVIRONMENT
+export UV_PROJECT_ENVIRONMENT=.venv-libero
 export LIBERO_ROOT=/home/lpx/python-project/LIBERO	# 如果LIBERO放在其他位置
 
-HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run --extra libero src/myvla/evaluate.py \
   --checkpoint outputs/train/libero_all_v2_2/checkpoint_40000.pt \
   --suite libero_all --episodes 10 --execute-steps 12 \
   --output-dir outputs/eval/libero_all_v2_2
@@ -223,7 +238,7 @@ HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
 评估的 `--suite` 支持 `libero_spatial`、`libero_object`、`libero_goal`、`libero_10` 和 `libero_all`，不再支持 `libero_90`。使用 `libero_all` 会按上述前四个套件的顺序依次评估同一个 checkpoint：
 
 ```bash
-HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run --extra libero src/myvla/evaluate.py \
   --checkpoint outputs/train/libero_all_v2_2/checkpoint_10000.pt \
   --suite libero_all --episodes 10 --execute-steps 12 \
   --output-dir outputs/eval/libero_all_v2_2
@@ -236,7 +251,7 @@ HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
 ```bash
 export UV_PROJECT_ENVIRONMENT=.venv-mt50
 
-HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run --extra mt50 src/myvla/evaluate.py \
   --checkpoint outputs/train/metaworld_mt50_v1_2/checkpoint_30000.pt \
   --episodes 50 --execute-steps 1 --protocol lerobot \
   --output-dir outputs/eval/metaworld_mt50_v1_2
@@ -273,6 +288,7 @@ outputs/eval/libero_spatial_v1_1/
 ​	使用 checkpoint 中的模型结构测试 batch=1 的完整动作块推理，无需启动仿真：
 
 ```bash
+unset UV_PROJECT_ENVIRONMENT
 HF_HUB_OFFLINE=1 uv run scripts/measure_inference_time.py \
   --checkpoint outputs/train/libero_spatial_v1/checkpoint_20000.pt \
   --device cuda --precision fp32 \
@@ -302,4 +318,4 @@ alias uv='python -m uv'
 uv --version
 ```
 
-​	需要把uv run命令换成.venv/bin/python
+​	若直接使用 Python，训练使用 `.venv/bin/python`，LIBERO 评估使用 `.venv-libero/bin/python`，MT50 评估使用 `.venv-mt50/bin/python`。

@@ -20,7 +20,11 @@ def import_metaworld():
     try:
         import metaworld
     except ImportError as exc:
-        raise RuntimeError("Use the isolated MT50 environment: uv sync --extra mt50") from exc
+        raise RuntimeError(
+            "Use the isolated MT50 evaluation environment: "
+            "`UV_PROJECT_ENVIRONMENT=.venv-mt50 uv sync --locked --extra mt50`, then "
+            "evaluate with `UV_PROJECT_ENVIRONMENT=.venv-mt50 uv run --extra mt50 ...`"
+        ) from exc
     return metaworld
 
 

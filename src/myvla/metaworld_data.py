@@ -23,7 +23,10 @@ def parquet_module():
     try:
         import pyarrow.parquet as pq
     except ImportError as exc:
-        raise RuntimeError("MT50 import requires `uv sync --extra mt50`") from exc
+        raise RuntimeError(
+            "MT50 import requires pyarrow in the training environment; "
+            "run `UV_PROJECT_ENVIRONMENT=.venv uv sync --locked`"
+        ) from exc
     return pq
 
 

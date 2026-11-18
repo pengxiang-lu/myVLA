@@ -147,7 +147,11 @@ def _evaluate_suite(
         from libero.libero import benchmark
         from libero.libero.envs import OffScreenRenderEnv
     except ImportError as exc:
-        raise RuntimeError("LIBERO simulator missing; run `uv sync --extra sim`") from exc
+        raise RuntimeError(
+            "LIBERO simulator missing; run "
+            "`UV_PROJECT_ENVIRONMENT=.venv-libero uv sync --locked --extra libero`, then "
+            "evaluate with `UV_PROJECT_ENVIRONMENT=.venv-libero uv run --extra libero ...`"
+        ) from exc
     device = resolve_device(device_name)
     seed_everything(seed)
     policy, config, stats, payload = policy_from_checkpoint(checkpoint, device, weights=weights)

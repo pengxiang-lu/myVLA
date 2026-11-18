@@ -88,11 +88,13 @@
 
 ```bash
 # 四套件联合训练（Spatial 单套件使用 configs/libero_spatial/train_cfg_v3.yaml）
+unset UV_PROJECT_ENVIRONMENT
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
   --config configs/libero_all/train_cfg_v3.yaml
 
 # 闭环评估；动作头类型和积分步数由 checkpoint 配置自动恢复
-HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+UV_PROJECT_ENVIRONMENT=.venv-libero HF_HUB_OFFLINE=1 MUJOCO_GL=egl \
+uv run --extra libero src/myvla/evaluate.py \
   --checkpoint outputs/train/libero_all_v3/checkpoint_40000.pt \
   --suite libero_all --episodes 10 --execute-steps 12 \
   --output-dir outputs/eval/libero_all_v3
@@ -121,8 +123,9 @@ V4 将 V2.2 的 CLIP 视觉和文本编码器替换为 `google/siglip-base-patch
 V4 配置采用固定上游 revision `7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed`，使用本地 `models/siglip-base-patch16-224`。需要另外下载 SigLIP 预训练权重（约 813 MB）；原 CLIP 权重不能替代它。新增依赖 `sentencepiece` 和 `protobuf` 已写入 `pyproject.toml` 和 `uv.lock`。
 
 ```bash
-# LIBERO 环境安装/更新依赖
-uv sync --locked --extra sim
+# 通用训练环境安装/更新依赖
+unset UV_PROJECT_ENVIRONMENT
+uv sync --locked
 
 # 下载固定版本的 SigLIP 权重及 tokenizer；支持 --endpoint 指定镜像
 uv run scripts/download_siglip.py --workers 2
@@ -131,13 +134,14 @@ uv run scripts/download_siglip.py --workers 2
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
   --config configs/libero_all/train_cfg_v4.yaml
 
-HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run src/myvla/evaluate.py \
+UV_PROJECT_ENVIRONMENT=.venv-libero HF_HUB_OFFLINE=1 MUJOCO_GL=egl \
+uv run --extra libero src/myvla/evaluate.py \
   --checkpoint outputs/train/libero_all_v4/checkpoint_40000.pt \
   --suite libero_all --episodes 10 --execute-steps 12 \
   --output-dir outputs/eval/libero_all_v4
 ```
 
-默认输出分别为 `outputs/train/libero_spatial_v4` 和 `outputs/train/libero_all_v4`。MetaWorld 可用同一配置加 `--dataset metaworld`，需在 `.venv-mt50` 环境同步 `--extra mt50` 依赖。V4 需要独立训练，不能直接加载 V2.2 或 V3 的任务 checkpoint。旧 checkpoint 仍按各自保存的 backend 和结构恢复；早期曾使用 V4 名称的 8 层 CLIP 融合实验归入 V2.3，新 V4 专指本节的 SigLIP 模型。
+默认输出分别为 `outputs/train/libero_spatial_v4` 和 `outputs/train/libero_all_v4`。MetaWorld 训练可用同一配置加 `--dataset metaworld`，仍使用 `.venv`；LIBERO 评估使用 `.venv-libero` 和 `--extra libero`，MT50 评估使用 `.venv-mt50` 和 `--extra mt50`。V4 需要独立训练，不能直接加载 V2.2 或 V3 的任务 checkpoint。旧 checkpoint 仍按各自保存的 backend 和结构恢复；早期曾使用 V4 名称的 8 层 CLIP 融合实验归入 V2.3，新 V4 专指本节的 SigLIP 模型。
 
 当前只完成离线小模型功能验证，尚未下载完整 SigLIP 权重或开展正式训练、GPU 显存测量与仿真成功率评估。
 
