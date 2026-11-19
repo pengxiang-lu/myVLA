@@ -25,8 +25,8 @@ train:
   output_dir: outputs/train/libero_all_v3
   device: cuda
   precision: fp16
-  batch_size: 8
-  grad_accumulation: 8
+  batch_size: 32
+  grad_accumulation: 4
   workers: 2
   steps: 40000
   lr: 0.0001

@@ -5,8 +5,8 @@ model:
   backend: siglip
   image_size: 224
   hidden_dim: 256
-  layers: 4
-  heads: 8
+  layers: 32
+  heads: 4
   chunk_size: 12
   dropout: 0.1
   fusion_layers: 6
