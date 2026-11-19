@@ -145,9 +145,9 @@ uv run src/myvla/train.py \
 
 ```bash
 unset UV_PROJECT_ENVIRONMENT
-
+HF_HUB_DISABLE_XET=1 HF_HUB_DOWNLOAD_TIMEOUT=120 \
 uv run scripts/download_data.py \
-  --suite metaworld_mt50 --directory /path/to/datasets --max-workers 2
+  --suite metaworld_mt50 --directory /path/to/datasets --max-workers 4
 
 uv run scripts/convert_metaworld.py \
   --source /path/to/datasets/metaworld_mt50_raw \
@@ -187,18 +187,19 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
   --steps 40000
 ```
 
-　　`--init-checkpoint` 用于加载权重开始新的微调，并重置优化器，两者不能同时使用。已有输出目录会被保护，重新训练请设置新的 `--output-dir`。旧 checkpoint 仍可用于推理、初始化或续训；旧配置中的验证字段会被忽略。续训会将原验证轨迹纳入训练，并保留 checkpoint 的归一化统计量、优化器、EMA 和原学习率计划。仅使用 `--resume` 时，保存间隔默认改为 2,000 步；提供 `--config` 时使用配置中的 `save_every`，也可用 `--save-every` 显式指定。旧的 `latest.pt` 仍可作为续训起点，后续按新规则命名。新训练的归一化统计量从全部演示计算。
+　　`--init-checkpoint` 用于加载权重开始新的微调，并重置优化器，两者不能同时使用。已有输出目录会被保护，重新训练请设置新的 `--output-dir`。旧 checkpoint 仍可用于推理、初始化或续训；旧配置中的验证字段会被忽略。续训会将原验证轨迹纳入训练，并保留 checkpoint 的归一化统计量、优化器、EMA 和原学习率计划。仅使用 `--resume` 时，保存间隔沿用 checkpoint 中的 `save_every`（例如原来每 8,000 步保存，续训后仍为每 8,000 步）；提供 `--config` 时使用配置中的 `save_every`，`--save-every` 可显式覆盖这两者。若旧版续训已把间隔改成 2,000 并写入了新 checkpoint，需追加 `--save-every 8000` 恢复原间隔。旧的 `latest.pt` 仍可作为续训起点，后续按新规则命名。新训练的归一化统计量从全部演示计算。
 
-### 3.5 V3 与 V4 配置
+### 3.5 V3、V4 与 V5 配置
 
-V3 在 V2.2 基础上使用 Flow Matching 动作头；V4 在 V2.2 基础上将视觉和文本编码器换成 SigLIP，保留原回归动作头。两者均训练视觉编码器、冻结文本编码器。
+V3 在 V2.2 基础上使用 Flow Matching 动作头；V4 在 V2.2 基础上将视觉和文本编码器换成 SigLIP，保留原回归动作头。V5 结合 V3 与 V4，使用 SigLIP 编码器和 Flow Matching 动作头。三个版本均训练视觉编码器、冻结文本编码器。
 
 | 版本 | Spatial 配置 | 四套件联合训练配置 |
 |---|---|---|
 | V3 | `configs/libero_spatial/train_cfg_v3.yaml` | `configs/libero_all/train_cfg_v3.yaml` |
 | V4 | `configs/libero_spatial/train_cfg_v4.yaml` | `configs/libero_all/train_cfg_v4.yaml` |
+| V5 | `configs/libero_spatial/train_cfg_v5.yaml` | `configs/libero_all/train_cfg_v5.yaml` |
 
-V4 需要单独准备 SigLIP 权重：
+V4、V5 共用 SigLIP 预训练权重，只需准备一份：
 
 ```bash
 unset UV_PROJECT_ENVIRONMENT
@@ -208,7 +209,17 @@ uv run scripts/download_siglip.py --workers 2
 HF_HUB_OFFLINE=1 uv run src/myvla/train.py --config configs/libero_all/train_cfg_v4.yaml
 ```
 
-下载内容保存到 `models/siglip-base-patch16-224/`，训练输出到 `outputs/train/libero_all_v4/`。V3/V4 均需要独立训练，不能直接用 V2.2 的 checkpoint 续训。模型细节见 [模型版本说明](docs/VLA版本.md)。
+下载内容保存到 `models/siglip-base-patch16-224/`，训练输出到 `outputs/train/libero_all_v4/`。V3/V4/V5 均需要独立训练，不能跨模型版本直接续训。V5 无需额外下载 Flow Matching 权重。模型细节见 [模型版本说明](docs/VLA版本.md)。
+
+V5 的四套件联合训练：
+
+```bash
+unset UV_PROJECT_ENVIRONMENT
+HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
+  --config configs/libero_all/train_cfg_v5.yaml
+```
+
+单套件训练改用 `configs/libero_spatial/train_cfg_v5.yaml`；MT50 训练追加 `--dataset metaworld`，仍使用 `.venv`，默认输出为 `outputs/train/metaworld_mt50_v5`。评估继续使用对应仿真环境，程序会从 checkpoint 恢复 SigLIP 编码器和 Flow Matching 动作头。
 
 ## 四、评估
 
@@ -219,11 +230,11 @@ HF_HUB_OFFLINE=1 uv run src/myvla/train.py --config configs/libero_all/train_cfg
 ```bash
 export UV_PROJECT_ENVIRONMENT=.venv-libero
 export LIBERO_ROOT=/home/lpx/python-project/LIBERO	# 如果LIBERO放在其他位置
-
+export LIBERO_ROOT=third_party/LIBERO
 HF_HUB_OFFLINE=1 MUJOCO_GL=egl uv run --extra libero src/myvla/evaluate.py \
-  --checkpoint outputs/train/libero_all_v2_2/checkpoint_40000.pt \
+  --checkpoint outputs/train/libero_all_v3/checkpoint_8000.pt \
   --suite libero_all --episodes 10 --execute-steps 12 \
-  --output-dir outputs/eval/libero_all_v2_2
+  --output-dir outputs/eval/libero_all_v3
 ```
 
 　　将 `LIBERO_ROOT` 和 `--checkpoint` 改为实际路径。省略 `--tasks` 会评估整个套件；追加 `--tasks 0` 可仅评估单任务，追加 `--video`（或 `--videos`）保存视频到 `ckpt<步数>/seed<seed>/videos/`。Spatial 默认每任务 10 回合、每回合最多 220 个控制步，默认每次执行完整 12 步预测动作后重新观察；使用旧的 8 步 checkpoint 时，需显式设置 `--execute-steps 8` 或更小的值。

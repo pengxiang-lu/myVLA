@@ -70,7 +70,7 @@ class Config:
         meta = dataset == "metaworld"
         suite = "metaworld_mt50" if meta else "libero_spatial"
         if self.model.backend == "siglip":
-            model_version = "v4"
+            model_version = "v5" if self.model.action_head == "flow_matching" else "v4"
         elif self.model.action_head == "flow_matching":
             model_version = "v3"
         elif self.model.train_vision_encoder:

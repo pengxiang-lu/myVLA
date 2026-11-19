@@ -18,7 +18,7 @@ import torch
 import yaml
 from torch.utils.data import DataLoader, Sampler
 
-from .config import TrainConfig, from_dict, load_config
+from .config import from_dict, load_config
 from .data import RobotDataset, compute_stats, manifest, scan_episodes
 from .ema import HeadEMA
 from .model import Policy
@@ -463,7 +463,10 @@ def add_train_arguments(parser):
         help="Total target steps; resume may extend this without restarting the LR schedule",
     )
     parser.add_argument("--workers", type=int)
-    parser.add_argument("--save-every", type=int, help="Checkpoint interval (default: 2000 steps)")
+    parser.add_argument(
+        "--save-every", type=int,
+        help="Override checkpoint interval; defaults to the YAML/checkpoint setting",
+    )
     parser.add_argument("--output-dir")
 
 
@@ -472,7 +475,6 @@ def run_training(args, parser, trainer=None):
         config = load_config(args.config)
     elif args.resume:
         config = from_dict(load_checkpoint(args.resume)["config"])
-        config.train.save_every = TrainConfig().save_every
         # Keep relocated runs in their current directory rather than the saved old path.
         config.train.output_dir = str(Path(args.resume).parent)
     else:
@@ -497,7 +499,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description=(
-            "Train V1 (including V1.1/V1.2), V2 (including V2.1/V2.2) or V4 "
+            "Train V1 (including V1.1/V1.2), V2 (including V2.1/V2.2), V3, V4 or V5 "
             "on LIBERO or MetaWorld MT50."
         ),
         epilog="Relative config, data, model and output paths use the project root.",

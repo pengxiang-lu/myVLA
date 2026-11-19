@@ -28,7 +28,29 @@ def test_resume_uses_relocated_checkpoint_directory(monkeypatch, tmp_path, overr
         args.extend(["--output-dir", override])
     script.main(args)
     assert captured[0].train.output_dir == (override or "outputs/train/libero_spatial_v1")
-    assert captured[0].train.save_every == 2000
+    assert captured[0].train.save_every == 1000
+
+
+@pytest.mark.parametrize("entrypoint", ["train", "cli"])
+@pytest.mark.parametrize("save_every", [None, 4000])
+def test_resume_preserves_checkpoint_interval_unless_overridden(
+    monkeypatch, entrypoint, save_every,
+):
+    script = load_script(entrypoint)
+    training = load_script("train")
+    config = training.load_config(ROOT / "configs/libero_all/train_cfg_v2_2.yaml").to_dict()
+    config["train"]["save_every"] = 8000
+    monkeypatch.setattr(training, "load_checkpoint", lambda _: {"config": config})
+    captured = []
+    monkeypatch.setattr(script, "train", lambda config, **kw: captured.append(config))
+    args = ["--resume", "outputs/train/libero_all_v2_2/checkpoint_16000.pt"]
+    if save_every is not None:
+        args.extend(["--save-every", str(save_every)])
+    script.main((["train"] if entrypoint == "cli" else []) + args)
+    assert captured[0].train.save_every == (8000 if save_every is None else save_every)
+    expected = dict(config["train"], save_every=captured[0].train.save_every,
+                    output_dir="outputs/train/libero_all_v2_2")
+    assert vars(captured[0].train) == expected
 
 
 def test_train_script_from_another_directory(monkeypatch, tmp_path):

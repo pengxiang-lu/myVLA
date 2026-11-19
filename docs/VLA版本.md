@@ -146,3 +146,47 @@ uv run --extra libero src/myvla/evaluate.py \
 当前只完成离线小模型功能验证，尚未下载完整 SigLIP 权重或开展正式训练、GPU 显存测量与仿真成功率评估。
 
 参考：[SigLIP 模型与 tokenizer 文档](https://huggingface.co/docs/transformers/model_doc/siglip)、[预训练权重](https://huggingface.co/google/siglip-base-patch16-224)。
+
+
+## V5：SigLIP 编码器 + Flow Matching 动作头
+
+V5 组合 V4 的 SigLIP Base patch16-224 视觉/文本编码器和 V3 的条件 Flow Matching 动作头。沿用 6 层双向视觉—语言融合、4 层 Transformer 动作解码器和 12 步动作块；视觉编码器参与训练（学习率 `1e-5`），文本编码器冻结，融合模块和动作头使用 `1e-4`。
+
+| 模型 | 编码器 | 动作头 |
+|---|---|---|
+| V2.2 | CLIP | 直接回归 |
+| V3 | CLIP | Flow Matching |
+| V4 | SigLIP | 直接回归 |
+| V5 | SigLIP | Flow Matching |
+
+V5 的 `model.backend: siglip`、`model.action_head: flow_matching`、`model.flow_steps: 10`。训练使用 V3 的带 mask 速度 MSE，LIBERO 夹爪转换为有符号动作；推理默认从高斯噪声开始执行 10 步 Euler 积分。图像归一化、196 个视觉 patch 及 64 token 固定文本处理均沿用 V4。LIBERO 输出为 `12×7`；切换 MT50 后为单相机、4 维状态、`12×4` 动作块。
+
+配置分别为 `configs/libero_spatial/train_cfg_v5.yaml` 和 `configs/libero_all/train_cfg_v5.yaml`，训练超参数分别沿用对应的 V3/V4，输出到独立的 `*_v5` 目录。已有 V4 的 `models/siglip-base-patch16-224` 权重可复用，不需要另下载 Flow Matching 权重，也没有新增软件依赖。
+
+```bash
+# 所有训练使用 .venv；如缺少 SigLIP 权重，先运行 scripts/download_siglip.py
+unset UV_PROJECT_ENVIRONMENT
+HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
+  --config configs/libero_all/train_cfg_v5.yaml
+
+# LIBERO 四套件评估
+UV_PROJECT_ENVIRONMENT=.venv-libero HF_HUB_OFFLINE=1 MUJOCO_GL=egl \
+uv run --extra libero src/myvla/evaluate.py \
+  --checkpoint outputs/train/libero_all_v5/checkpoint_40000.pt \
+  --suite libero_all --episodes 10 --execute-steps 12 \
+  --output-dir outputs/eval/libero_all_v5
+
+# MT50 训练，使用独立的 MT50 演示数据
+unset UV_PROJECT_ENVIRONMENT
+HF_HUB_OFFLINE=1 uv run src/myvla/train.py \
+  --config configs/libero_spatial/train_cfg_v5.yaml --dataset metaworld
+
+# MT50 评估
+UV_PROJECT_ENVIRONMENT=.venv-mt50 HF_HUB_OFFLINE=1 MUJOCO_GL=egl \
+uv run --extra mt50 src/myvla/evaluate.py \
+  --checkpoint outputs/train/metaworld_mt50_v5/checkpoint_10000.pt \
+  --episodes 50 --execute-steps 1 --protocol lerobot \
+  --output-dir outputs/eval/metaworld_mt50_v5
+```
+
+V5 需要独立训练，现有 V3/V4 的任务 checkpoint 不能直接跨版本续训。EMA、断点恢复和推理耗时测量复用现有流程。当前完成的是离线小模型训练、梯度、EMA、断点恢复及推理一致性验证，尚无 V5 正式训练或仿真成功率结果。
