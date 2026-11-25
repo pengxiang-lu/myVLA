@@ -1,4 +1,4 @@
-# V5: V4 SigLIP Base patch16-224 encoders with the V3 Flow Matching action head.
+# V3.1: V2.2 fusion/regression head with SigLIP Base patch16-224 encoders.
 model:
   backbone: models/siglip-base-patch16-224
   revision: 7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed
@@ -14,15 +14,14 @@ model:
   action_dim: 7
   cameras: 2
   train_vision_encoder: true
-  action_head: flow_matching
-  flow_steps: 10
+  action_head: regression
 data:
   directory: data/libero_spatial
   pattern: '*_demo.hdf5'
   flip_vertical: true
   dataset: libero
 train:
-  output_dir: outputs/train/libero_spatial_v5
+  output_dir: outputs/train/libero_spatial_v3_1
   device: cuda
   precision: fp16
   batch_size: 16

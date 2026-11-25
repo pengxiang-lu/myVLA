@@ -265,11 +265,75 @@ class FlowMatchingActionHead(ActionHead):
         return self.sample(memory)
 
 
+class DiffusionActionHead(ActionHead):
+    """Conditional epsilon prediction with a cosine DDPM schedule and DDIM (eta=0)."""
+
+    def __init__(self, config, vision_dim, text_dim):
+        super().__init__(config, vision_dim, text_dim)
+        self.action_dim = config.action_dim
+        self.train_steps = config.diffusion_train_steps
+        self.inference_steps = config.diffusion_inference_steps
+        d = config.hidden_dim
+        self.action_proj = nn.Linear(config.action_dim, d)
+        self.time_proj = nn.Sequential(nn.Linear(d, d), nn.SiLU(), nn.Linear(d, d))
+        self.register_buffer(
+            "time_frequencies", torch.exp(torch.linspace(0, -math.log(10000), (d + 1) // 2))
+        )
+        # Compute the schedule in float64, store FP32 for training and sampling.
+        times = torch.linspace(0, 1, self.train_steps + 1, dtype=torch.float64)
+        cumulative = torch.cos((times + 0.008) / 1.008 * math.pi / 2).square()
+        betas = (1 - cumulative[1:] / cumulative[:-1]).clamp(max=0.999)
+        self.register_buffer("alpha_bar", (1 - betas).cumprod(0).float())
+
+    def predict_noise(self, actions, timesteps, memory):
+        phase = timesteps.float()[:, None] * self.time_frequencies[None]
+        embedding = torch.cat([phase.sin(), phase.cos()], dim=-1)
+        embedding = self.time_proj(embedding[:, :self.action_queries.shape[-1]])
+        queries = self.action_proj(actions) + self.action_queries + embedding[:, None]
+        return self.output(self.decoder(queries, memory))
+
+    def loss(self, vision, text, state, targets, mask, tokens=None, padding=None):
+        memory = self.encode_context(vision, text, state, tokens, padding)
+        targets = targets.float().clone()
+        if self.action_dim == 7:
+            targets[..., 6] = targets[..., 6] * 2 - 1
+        valid = mask.bool().unsqueeze(-1)
+        targets = targets.masked_fill(~valid, 0)
+        noise = torch.randn_like(targets).masked_fill(~valid, 0)
+        timesteps = torch.randint(self.train_steps, (len(targets),), device=targets.device)
+        alpha = self.alpha_bar[timesteps, None, None]
+        noisy = alpha.sqrt() * targets + (1 - alpha).sqrt() * noise
+        prediction = self.predict_noise(noisy, timesteps, memory)
+        error = (prediction.float() - noise).square().mean(-1)
+        loss = error.masked_fill(~mask.bool(), 0).sum() / mask.sum().clamp_min(1)
+        return loss, {"diffusion": loss.detach()}
+
+    def sample(self, memory, noise=None):
+        shape = (memory.shape[0], self.action_queries.shape[1], self.action_dim)
+        actions = (torch.randn(shape, device=memory.device, dtype=torch.float32)
+                   if noise is None else noise.float().clone())
+        steps = torch.linspace(self.train_steps - 1, 0, self.inference_steps).round().long()
+        for i, step in enumerate(steps.tolist()):
+            timestep = torch.full((len(actions),), step, device=memory.device, dtype=torch.long)
+            epsilon = self.predict_noise(actions, timestep, memory).float()
+            alpha = self.alpha_bar[step]
+            clean = (actions - (1 - alpha).sqrt() * epsilon) / alpha.sqrt()
+            # Actions use z-score normalization, so do not clip clean predictions to [-1, 1].
+            previous = (self.alpha_bar[steps[i + 1].item()]
+                        if i + 1 < len(steps) else alpha.new_ones(()))
+            actions = previous.sqrt() * clean + (1 - previous).sqrt() * epsilon
+        return actions
+
+    def forward(self, vision, text, state, tokens=None, padding=None):
+        return self.sample(self.encode_context(vision, text, state, tokens, padding))
+
+
 class Policy(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.backbone = FrozenCLIP(config)
-        head = FlowMatchingActionHead if config.action_head == "flow_matching" else ActionHead
+        head = {"regression": ActionHead, "flow_matching": FlowMatchingActionHead,
+                "diffusion": DiffusionActionHead}[config.action_head]
         self.head = head(config, self.backbone.vision_dim, self.backbone.text_dim)
 
     def forward(self, images, state, language):
@@ -277,7 +341,7 @@ class Policy(nn.Module):
         return self.head(features[0], features[1], state, *features[2:])
 
     def compute_loss(self, images, state, language, targets, mask):
-        if isinstance(self.head, FlowMatchingActionHead):
+        if isinstance(self.head, (FlowMatchingActionHead, DiffusionActionHead)):
             features = self.backbone(images, language)
             return self.head.loss(features[0], features[1], state, targets, mask, *features[2:])
         return action_loss(self(images, state, language), targets, mask)

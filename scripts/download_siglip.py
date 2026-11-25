@@ -1,4 +1,4 @@
-"""Download the pinned SigLIP Base checkpoint used by V4 (about 813 MB)."""
+"""Download the pinned SigLIP Base checkpoint used by V3.1 (about 813 MB)."""
 
 import argparse
 from pathlib import Path

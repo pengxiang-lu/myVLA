@@ -42,7 +42,7 @@ def offline_siglip(monkeypatch):
                         lambda *a, **kw: deepcopy(template))
     monkeypatch.setattr("myvla.model.AutoTokenizer.from_pretrained",
                         lambda *a, **kw: Tokenizer())
-    config = load_config(ROOT / "configs/libero_spatial/train_cfg_v4.yaml")
+    config = load_config(ROOT / "configs/libero_spatial/train_cfg_v3_1.yaml")
     config.model.hidden_dim = 16
     config.model.heads = 2
     config.model.layers = 1
@@ -52,15 +52,15 @@ def offline_siglip(monkeypatch):
 
 
 @pytest.mark.parametrize("suite", ["libero_spatial", "libero_all"])
-def test_v4_config_is_v22_with_siglip(suite):
+def test_v3_1_config_is_v22_with_siglip(suite):
     base = load_config(ROOT / "configs" / suite / "train_cfg_v2_2.yaml")
-    v4 = load_config(ROOT / "configs" / suite / "train_cfg_v4.yaml")
-    assert replace(v4.model, backbone=base.model.backbone, revision=base.model.revision,
+    v3_1 = load_config(ROOT / "configs" / suite / "train_cfg_v3_1.yaml")
+    assert replace(v3_1.model, backbone=base.model.backbone, revision=base.model.revision,
                    backend=base.model.backend) == base.model
-    assert v4.data == base.data
-    assert replace(v4.train, output_dir=base.train.output_dir) == base.train
-    assert v4.model.action_head == "regression"
-    assert v4.for_dataset("metaworld").train.output_dir.endswith("metaworld_mt50_v4")
+    assert v3_1.data == base.data
+    assert replace(v3_1.train, output_dir=base.train.output_dir) == base.train
+    assert v3_1.model.action_head == "regression"
+    assert v3_1.for_dataset("metaworld").train.output_dir.endswith("metaworld_mt50_v3_1")
 
 
 @pytest.mark.parametrize("action_head", ["regression", "flow_matching"])
@@ -145,19 +145,19 @@ def test_siglip_checkpoint_resume_ema_and_uncached_inference(
 
 
 @pytest.mark.parametrize("suite", ["libero_spatial", "libero_all"])
-def test_v5_combines_siglip_and_flow_matching(suite):
+def test_v3_2_combines_siglip_and_flow_matching(suite):
     configs = ROOT / "configs" / suite
     v3 = load_config(configs / "train_cfg_v3.yaml")
-    v4 = load_config(configs / "train_cfg_v4.yaml")
-    v5 = load_config(configs / "train_cfg_v5.yaml")
-    assert replace(v5.model, action_head=v4.model.action_head) == v4.model
-    assert replace(v5.model, backend=v3.model.backend, backbone=v3.model.backbone,
+    v3_1 = load_config(configs / "train_cfg_v3_1.yaml")
+    v3_2 = load_config(configs / "train_cfg_v3_2.yaml")
+    assert replace(v3_2.model, action_head=v3_1.model.action_head) == v3_1.model
+    assert replace(v3_2.model, backend=v3.model.backend, backbone=v3.model.backbone,
                    revision=v3.model.revision) == v3.model
-    assert v5.data == v4.data == v3.data
-    assert v5.train.output_dir == f"outputs/train/{suite}_v5"
-    assert replace(v5.train, output_dir=v4.train.output_dir) == v4.train
-    assert v5.for_dataset("metaworld").train.output_dir == "outputs/train/metaworld_mt50_v5"
-    assert v5.model.flow_steps == 10
+    assert v3_2.data == v3_1.data == v3.data
+    assert v3_2.train.output_dir == f"outputs/train/{suite}_v3_2"
+    assert replace(v3_2.train, output_dir=v3_1.train.output_dir) == v3_1.train
+    assert v3_2.for_dataset("metaworld").train.output_dir == "outputs/train/metaworld_mt50_v3_2"
+    assert v3_2.model.flow_steps == 10
 
 
 def test_download_siglip_uses_pinned_weights(monkeypatch, tmp_path):
@@ -171,7 +171,7 @@ def test_download_siglip_uses_pinned_weights(monkeypatch, tmp_path):
     monkeypatch.setattr(module, "snapshot_download", lambda **kw: calls.append(kw))
     module.main(["--directory", str(tmp_path), "--endpoint", "https://example.com"])
     assert calls[0]["revision"] == load_config(
-        ROOT / "configs/libero_all/train_cfg_v4.yaml").model.revision
+        ROOT / "configs/libero_all/train_cfg_v3_1.yaml").model.revision
     assert "model.safetensors" in calls[0]["allow_patterns"]
     assert "pytorch_model.bin" not in calls[0]["allow_patterns"]
 

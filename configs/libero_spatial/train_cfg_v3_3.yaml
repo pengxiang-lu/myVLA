@@ -1,8 +1,8 @@
-# V5: V4 SigLIP Base patch16-224 encoders with the V3 Flow Matching action head.
+# V3.3: V2.2 CLIP/fusion with a conditional diffusion action head.
 model:
-  backbone: models/siglip-base-patch16-224
-  revision: 7fd15f0689c79d79e38b1c2e2e2370a7bf2761ed
-  backend: siglip
+  backbone: models/clip-vit-base-patch16
+  revision: 57c216476eefef5ab752ec549e440a49ae4ae5f3
+  backend: clip
   image_size: 224
   hidden_dim: 256
   layers: 4
@@ -14,26 +14,27 @@ model:
   action_dim: 7
   cameras: 2
   train_vision_encoder: true
-  action_head: flow_matching
-  flow_steps: 10
+  action_head: diffusion
+  diffusion_train_steps: 100
+  diffusion_inference_steps: 10
 data:
-  directory: data
-  pattern: 'libero_[sog1]*/*_demo.hdf5'
+  directory: data/libero_spatial
+  pattern: '*_demo.hdf5'
   flip_vertical: true
   dataset: libero
 train:
-  output_dir: outputs/train/libero_all_v5
+  output_dir: outputs/train/libero_spatial_v3_3
   device: cuda
   precision: fp16
-  batch_size: 32
+  batch_size: 16
   grad_accumulation: 4
   workers: 2
-  steps: 40000
+  steps: 10000
   lr: 0.0001
   weight_decay: 0.001
   warmup_steps: 500
   grad_clip: 1.0
-  save_every: 8000
+  save_every: 2000
   log_every: 20
   seed: 42
   image_shift: 0

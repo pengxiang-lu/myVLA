@@ -117,6 +117,10 @@ def benchmark(args):
         "fusion_layers": m.fusion_layers,
         "train_vision_encoder": m.train_vision_encoder,
         "action_head": m.action_head,
+        "diffusion_train_steps": m.diffusion_train_steps if m.action_head == "diffusion" else None,
+        "diffusion_inference_steps": (
+            m.diffusion_inference_steps if m.action_head == "diffusion" else None
+        ),
         "flow_steps": m.flow_steps if m.action_head == "flow_matching" else None,
         "chunk_size": m.chunk_size,
         "output_shape": shape,

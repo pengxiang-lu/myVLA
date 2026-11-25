@@ -22,6 +22,8 @@ class ModelConfig:
     train_vision_encoder: bool = False
     action_head: str = "regression"
     flow_steps: int = 10
+    diffusion_train_steps: int = 100
+    diffusion_inference_steps: int = 10
 
 
 @dataclass
@@ -69,8 +71,10 @@ class Config:
             return self
         meta = dataset == "metaworld"
         suite = "metaworld_mt50" if meta else "libero_spatial"
-        if self.model.backend == "siglip":
-            model_version = "v5" if self.model.action_head == "flow_matching" else "v4"
+        if self.model.action_head == "diffusion":
+            model_version = "v3_3"
+        elif self.model.backend == "siglip":
+            model_version = "v3_2" if self.model.action_head == "flow_matching" else "v3_1"
         elif self.model.action_head == "flow_matching":
             model_version = "v3"
         elif self.model.train_vision_encoder:
@@ -114,10 +118,15 @@ class Config:
             raise ValueError("model.backend must be clip, siglip or tiny (offline smoke test)")
         if not isinstance(m.train_vision_encoder, bool):
             raise ValueError("train_vision_encoder must be a boolean")
-        if m.action_head not in {"regression", "flow_matching"}:
-            raise ValueError("action_head must be regression or flow_matching")
+        if m.action_head not in {"regression", "flow_matching", "diffusion"}:
+            raise ValueError("action_head must be regression, flow_matching or diffusion")
         if type(m.flow_steps) is not int or m.flow_steps < 1:
             raise ValueError("flow_steps must be a positive integer")
+        if type(m.diffusion_train_steps) is not int or m.diffusion_train_steps < 2:
+            raise ValueError("diffusion_train_steps must be an integer >= 2")
+        if (type(m.diffusion_inference_steps) is not int
+                or not 1 <= m.diffusion_inference_steps <= m.diffusion_train_steps):
+            raise ValueError("diffusion_inference_steps must be in [1, diffusion_train_steps]")
         if min(m.hidden_dim, m.layers, m.heads, m.chunk_size, m.image_size) < 1:
             raise ValueError("Model dimensions must be positive")
         if not isinstance(m.fusion_layers, int) or m.fusion_layers < 0:

@@ -1,4 +1,4 @@
-# V4: V2.2 with eight bidirectional cross-attention fusion blocks.
+# V2.3: V2.2 with eight bidirectional cross-attention fusion blocks.
 # CLIP vision is trainable; text and original CLIP projections stay frozen.
 # Training settings follow V2; effective batch remains 64.
 model:
@@ -22,7 +22,7 @@ data:
   flip_vertical: true
   dataset: libero
 train:
-  output_dir: outputs/train/libero_spatial_v4
+  output_dir: outputs/train/libero_spatial_v2_3
   device: cuda
   precision: fp16
   batch_size: 16
